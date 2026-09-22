@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 import requests
+
+from ml.risk_engine import calculate_risk
+
 
 app = FastAPI(title="ASTRA API")
 
@@ -25,12 +28,15 @@ def get_weather(latitude: float, longitude: float):
         "forecast_days": 1
     }
 
-    response = requests.get(url, params=params)
+    try:
+        response = requests.get(url, params=params, timeout=10)
+        response.raise_for_status()
 
-    if response.status_code != 200:
-        return {
-            "error": "Unable to fetch weather data"
-        }
+    except requests.RequestException:
+        raise HTTPException(
+            status_code=502,
+            detail="Unable to fetch weather data"
+        )
 
     data = response.json()
 
@@ -46,16 +52,28 @@ def get_weather(latitude: float, longitude: float):
 
     rain_probability = hourly["precipitation_probability"][current_index]
 
+    weather_data = {
+        "temperature": current["temperature_2m"],
+        "humidity": current["relative_humidity_2m"],
+        "wind_speed": current["wind_speed_10m"],
+        "rainfall": current["precipitation"],
+        "rain_probability": rain_probability
+    }
+
+    try:
+        risk = calculate_risk(weather_data)
+
+    except ValueError as error:
+        raise HTTPException(
+            status_code=500,
+            detail=str(error)
+        )
+
     return {
         "location": {
             "latitude": latitude,
             "longitude": longitude
         },
-        "weather": {
-            "temperature": current["temperature_2m"],
-            "humidity": current["relative_humidity_2m"],
-            "wind_speed": current["wind_speed_10m"],
-            "rainfall": current["precipitation"],
-            "rain_probability": rain_probability
-        }
+        "weather": weather_data,
+        "risk": risk
     }
