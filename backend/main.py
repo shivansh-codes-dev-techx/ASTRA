@@ -1,7 +1,9 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-import requests
+
+import os
 import time
+import requests
 
 from ml.risk_engine import calculate_risk
 
@@ -29,27 +31,25 @@ app.add_middleware(
 
 
 # =========================================================
-# WEATHER CACHE
+# CACHE
 # =========================================================
 
-# Cache weather responses for 5 minutes.
-# Key = rounded latitude/longitude
-weather_cache = {}
+WEATHER_CACHE = {}
 
 CACHE_DURATION = 300  # 5 minutes
 
 
 def get_cache_key(latitude, longitude):
     return (
-        round(latitude, 4),
-        round(longitude, 4)
+        round(float(latitude), 2),
+        round(float(longitude), 2),
     )
 
 
 def get_cached_weather(latitude, longitude):
     key = get_cache_key(latitude, longitude)
 
-    cached = weather_cache.get(key)
+    cached = WEATHER_CACHE.get(key)
 
     if not cached:
         return None
@@ -57,15 +57,18 @@ def get_cached_weather(latitude, longitude):
     age = time.time() - cached["timestamp"]
 
     if age < CACHE_DURATION:
-        print(
-            f"USING CACHE: {key} "
-            f"(age={round(age)} seconds)"
-        )
-
         return cached["data"]
 
-    # Remove expired cache
-    del weather_cache[key]
+    return None
+
+
+def get_stale_cached_weather(latitude, longitude):
+    key = get_cache_key(latitude, longitude)
+
+    cached = WEATHER_CACHE.get(key)
+
+    if cached:
+        return cached["data"]
 
     return None
 
@@ -73,298 +76,281 @@ def get_cached_weather(latitude, longitude):
 def save_weather_cache(latitude, longitude, data):
     key = get_cache_key(latitude, longitude)
 
-    weather_cache[key] = {
+    WEATHER_CACHE[key] = {
         "timestamp": time.time(),
-        "data": data
-    }
-
-    print(f"CACHE SAVED: {key}")
-
-
-# =========================================================
-# HOME
-# =========================================================
-
-@app.get("/")
-def home():
-    return {
-        "project": "ASTRA",
-        "status": "Backend is running"
+        "data": data,
     }
 
 
 # =========================================================
-# WEATHER
+# OPEN-METEO
 # =========================================================
 
-@app.get("/weather")
-def get_weather(latitude: float, longitude: float):
-
-    # -----------------------------------------------------
-    # 1. CHECK CACHE FIRST
-    # -----------------------------------------------------
-
-    cached_response = get_cached_weather(
-        latitude,
-        longitude
-    )
-
-    if cached_response is not None:
-        return cached_response
-
-
-    # -----------------------------------------------------
-    # 2. OPEN-METEO URL
-    # -----------------------------------------------------
+def fetch_open_meteo(latitude, longitude):
 
     url = "https://api.open-meteo.com/v1/forecast"
 
     params = {
         "latitude": latitude,
         "longitude": longitude,
-
         "current": (
             "temperature_2m,"
             "relative_humidity_2m,"
             "wind_speed_10m,"
             "precipitation"
         ),
-
         "hourly": (
             "precipitation_probability,"
             "precipitation"
         ),
-
-        "forecast_days": 1
+        "forecast_days": 1,
     }
 
+    response = requests.get(
+        url,
+        params=params,
+        timeout=10,
+    )
 
-    # -----------------------------------------------------
-    # 3. CALL OPEN-METEO
-    # -----------------------------------------------------
+    response.raise_for_status()
 
-    try:
-
-        response = requests.get(
-            url,
-            params=params,
-            timeout=15
-        )
-
-        print("========================================")
-        print("OPEN-METEO REQUEST")
-        print("URL:", response.url)
-        print("STATUS:", response.status_code)
-        print("========================================")
-
-
-        # -------------------------------------------------
-        # HANDLE RATE LIMIT
-        # -------------------------------------------------
-
-        if response.status_code == 429:
-
-            print(
-                "OPEN-METEO RATE LIMIT HIT (429)"
-            )
-
-            # If we have an older cached value,
-            # use it instead of breaking the app.
-            key = get_cache_key(
-                latitude,
-                longitude
-            )
-
-            old_cache = weather_cache.get(key)
-
-            if old_cache:
-
-                print(
-                    "Using stale cache because "
-                    "Open-Meteo returned 429."
-                )
-
-                return old_cache["data"]
-
-            raise HTTPException(
-                status_code=503,
-                detail=(
-                    "Weather provider is temporarily "
-                    "rate-limited. Please try again "
-                    "in a few minutes."
-                )
-            )
-
-
-        response.raise_for_status()
-
-
-    except requests.Timeout:
-
-        print("OPEN-METEO TIMEOUT")
-
-        raise HTTPException(
-            status_code=504,
-            detail="Weather provider request timed out."
-        )
-
-
-    except requests.RequestException as error:
-
-        print("OPEN-METEO ERROR:")
-        print(error)
-
-        raise HTTPException(
-            status_code=502,
-            detail=f"Unable to fetch weather data: {error}"
-        )
-
-
-    # -----------------------------------------------------
-    # 4. PARSE JSON
-    # -----------------------------------------------------
-
-    try:
-
-        data = response.json()
-
-    except ValueError:
-
-        raise HTTPException(
-            status_code=502,
-            detail="Open-Meteo returned invalid JSON."
-        )
-
-
-    # -----------------------------------------------------
-    # 5. VALIDATE RESPONSE
-    # -----------------------------------------------------
-
-    if "current" not in data:
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Open-Meteo response is missing "
-                "current weather data."
-            )
-        )
-
-
-    if "hourly" not in data:
-
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                "Open-Meteo response is missing "
-                "hourly weather data."
-            )
-        )
-
+    data = response.json()
 
     current = data["current"]
     hourly = data["hourly"]
 
+    current_time = current["time"]
 
-    # -----------------------------------------------------
-    # 6. CURRENT TIME
-    # -----------------------------------------------------
-
-    current_time = current.get("time")
-
-    hourly_times = hourly.get(
-        "time",
-        []
-    )
-
-
-    if current_time in hourly_times:
-
-        current_index = hourly_times.index(
-            current_time
-        )
-
+    if current_time in hourly["time"]:
+        current_index = hourly["time"].index(current_time)
     else:
-
         current_index = 0
 
-
-    # -----------------------------------------------------
-    # 7. RAIN PROBABILITY
-    # -----------------------------------------------------
-
-    rain_probability_list = hourly.get(
-        "precipitation_probability",
-        []
+    rain_probability = (
+        hourly["precipitation_probability"][current_index]
     )
 
+    return {
+        "temperature": current["temperature_2m"],
+        "humidity": current["relative_humidity_2m"],
+        "wind_speed": current["wind_speed_10m"],
+        "rainfall": current["precipitation"],
+        "rain_probability": rain_probability,
+    }
 
-    if rain_probability_list:
 
-        if current_index < len(
-            rain_probability_list
-        ):
+# =========================================================
+# WEATHERAPI FALLBACK
+# =========================================================
 
-            rain_probability = (
-                rain_probability_list[
-                    current_index
-                ]
-            )
+def fetch_weatherapi(latitude, longitude):
 
-        else:
+    api_key = os.getenv("WEATHER_API_KEY")
 
-            rain_probability = (
-                rain_probability_list[0]
-            )
+    if not api_key:
+        raise RuntimeError(
+            "WEATHER_API_KEY is not configured"
+        )
 
-    else:
+    url = "https://api.weatherapi.com/v1/forecast.json"
 
+    params = {
+        "key": api_key,
+        "q": f"{latitude},{longitude}",
+        "days": 1,
+        "aqi": "no",
+        "alerts": "no",
+    }
+
+    response = requests.get(
+        url,
+        params=params,
+        timeout=10,
+    )
+
+    response.raise_for_status()
+
+    data = response.json()
+
+    current = data["current"]
+
+    rain_probability = 0
+
+    try:
+        hourly = data["forecast"]["forecastday"][0]["hour"]
+
+        current_epoch = current["last_updated_epoch"]
+
+        closest_hour = min(
+            hourly,
+            key=lambda item: abs(
+                item["time_epoch"] - current_epoch
+            ),
+        )
+
+        rain_probability = closest_hour.get(
+            "chance_of_rain",
+            0
+        )
+
+    except (KeyError, TypeError, ValueError):
         rain_probability = 0
+
+    return {
+        "temperature": current.get(
+            "temp_c",
+            0
+        ),
+        "humidity": current.get(
+            "humidity",
+            0
+        ),
+        "wind_speed": current.get(
+            "wind_kph",
+            0
+        ),
+        "rainfall": current.get(
+            "precip_mm",
+            0
+        ),
+        "rain_probability": rain_probability,
+    }
+
+
+# =========================================================
+# WEATHER ENDPOINT
+# =========================================================
+
+@app.get("/weather")
+def get_weather(latitude: float, longitude: float):
+
+    # -----------------------------------------------------
+    # 1. CHECK CACHE
+    # -----------------------------------------------------
+
+    cached_weather = get_cached_weather(
+        latitude,
+        longitude
+    )
+
+    if cached_weather:
+
+        risk = calculate_risk(cached_weather)
+
+        return {
+            "location": {
+                "latitude": latitude,
+                "longitude": longitude,
+            },
+            "weather": cached_weather,
+            "risk": risk,
+            "provider": "cache",
+        }
+
+
+    weather_data = None
+    provider = None
 
 
     # -----------------------------------------------------
-    # 8. WEATHER DATA
+    # 2. TRY OPEN-METEO
     # -----------------------------------------------------
 
     try:
 
-        weather_data = {
-
-            "temperature":
-                current["temperature_2m"],
-
-            "humidity":
-                current["relative_humidity_2m"],
-
-            "wind_speed":
-                current["wind_speed_10m"],
-
-            "rainfall":
-                current["precipitation"],
-
-            "rain_probability":
-                rain_probability
-        }
-
-
-    except KeyError as error:
-
-        print(
-            "MISSING WEATHER FIELD:",
-            error
+        weather_data = fetch_open_meteo(
+            latitude,
+            longitude
         )
 
-        raise HTTPException(
-            status_code=502,
-            detail=(
-                f"Open-Meteo response is missing "
-                f"field: {error}"
-            )
+        provider = "open-meteo"
+
+    except requests.RequestException as error:
+
+        print(
+            f"Open-Meteo failed: {error}"
+        )
+
+    except Exception as error:
+
+        print(
+            f"Open-Meteo unexpected error: {error}"
         )
 
 
     # -----------------------------------------------------
-    # 9. RISK ENGINE
+    # 3. FALLBACK TO WEATHERAPI
+    # -----------------------------------------------------
+
+    if weather_data is None:
+
+        try:
+
+            weather_data = fetch_weatherapi(
+                latitude,
+                longitude
+            )
+
+            provider = "weatherapi"
+
+        except requests.RequestException as error:
+
+            print(
+                f"WeatherAPI failed: {error}"
+            )
+
+        except Exception as error:
+
+            print(
+                f"WeatherAPI unexpected error: {error}"
+            )
+
+
+    # -----------------------------------------------------
+    # 4. USE STALE CACHE IF BOTH PROVIDERS FAIL
+    # -----------------------------------------------------
+
+    if weather_data is None:
+
+        stale_weather = get_stale_cached_weather(
+            latitude,
+            longitude
+        )
+
+        if stale_weather:
+
+            weather_data = stale_weather
+            provider = "stale-cache"
+
+
+    # -----------------------------------------------------
+    # 5. BOTH PROVIDERS FAILED
+    # -----------------------------------------------------
+
+    if weather_data is None:
+
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                "Weather providers are temporarily "
+                "unavailable. Please try again shortly."
+            ),
+        )
+
+
+    # -----------------------------------------------------
+    # 6. SAVE CACHE
+    # -----------------------------------------------------
+
+    save_weather_cache(
+        latitude,
+        longitude,
+        weather_data
+    )
+
+
+    # -----------------------------------------------------
+    # 7. CALCULATE ASTRA RISK
     # -----------------------------------------------------
 
     try:
@@ -375,59 +361,35 @@ def get_weather(latitude: float, longitude: float):
 
     except ValueError as error:
 
-        print(
-            "RISK ENGINE ERROR:",
-            error
-        )
-
         raise HTTPException(
             status_code=500,
-            detail=f"Risk engine error: {error}"
-        )
-
-
-    except Exception as error:
-
-        print(
-            "UNEXPECTED RISK ENGINE ERROR:",
-            error
-        )
-
-        raise HTTPException(
-            status_code=500,
-            detail=(
-                f"Unexpected risk engine error: "
-                f"{error}"
-            )
+            detail=str(error)
         )
 
 
     # -----------------------------------------------------
-    # 10. FINAL RESPONSE
+    # 8. FINAL RESPONSE
     # -----------------------------------------------------
 
-    result = {
-
+    return {
         "location": {
             "latitude": latitude,
-            "longitude": longitude
+            "longitude": longitude,
         },
-
         "weather": weather_data,
-
-        "risk": risk
+        "risk": risk,
+        "provider": provider,
     }
 
 
-    # -----------------------------------------------------
-    # 11. SAVE TO CACHE
-    # -----------------------------------------------------
+# =========================================================
+# HOME
+# =========================================================
 
-    save_weather_cache(
-        latitude,
-        longitude,
-        result
-    )
+@app.get("/")
+def home():
 
-
-    return result
+    return {
+        "project": "ASTRA",
+        "status": "Backend is running",
+    }
