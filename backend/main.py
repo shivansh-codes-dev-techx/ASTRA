@@ -7,6 +7,11 @@ from ml.risk_engine import calculate_risk
 
 app = FastAPI(title="ASTRA API")
 
+
+# =========================================================
+# CORS
+# =========================================================
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -21,6 +26,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# =========================================================
+# HOME
+# =========================================================
+
 @app.get("/")
 def home():
     return {
@@ -28,6 +38,10 @@ def home():
         "status": "Backend is running"
     }
 
+
+# =========================================================
+# WEATHER API
+# =========================================================
 
 @app.get("/weather")
 def get_weather(latitude: float, longitude: float):
@@ -37,51 +51,175 @@ def get_weather(latitude: float, longitude: float):
     params = {
         "latitude": latitude,
         "longitude": longitude,
-        "current": "temperature_2m,relative_humidity_2m,wind_speed_10m,precipitation",
-        "hourly": "precipitation_probability,precipitation",
-        "forecast_days": 1
+        "current": (
+            "temperature_2m,"
+            "relative_humidity_2m,"
+            "wind_speed_10m,"
+            "precipitation"
+        ),
+        "hourly": (
+            "precipitation_probability,"
+            "precipitation"
+        ),
+        "forecast_days": 1,
     }
 
-    try:
-        response = requests.get(url, params=params, timeout=10)
-        response.raise_for_status()
+    # -----------------------------------------------------
+    # Fetch data from Open-Meteo
+    # -----------------------------------------------------
 
-    except requests.RequestException:
-        raise HTTPException(
-            status_code=502,
-            detail="Unable to fetch weather data"
+    try:
+        response = requests.get(
+            url,
+            params=params,
+            timeout=15
         )
 
-    data = response.json()
+        print("========================================")
+        print("OPEN-METEO URL:")
+        print(response.url)
+
+        print("OPEN-METEO STATUS:")
+        print(response.status_code)
+
+        print("OPEN-METEO RESPONSE:")
+        print(response.text)
+
+        print("========================================")
+
+        response.raise_for_status()
+
+    except requests.RequestException as error:
+
+        print("OPEN-METEO ERROR:")
+        print(error)
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Unable to fetch weather data: {error}"
+        )
+
+    # -----------------------------------------------------
+    # Parse JSON
+    # -----------------------------------------------------
+
+    try:
+        data = response.json()
+
+    except ValueError as error:
+
+        print("JSON PARSE ERROR:")
+        print(error)
+
+        raise HTTPException(
+            status_code=502,
+            detail="Open-Meteo returned invalid JSON."
+        )
+
+    # -----------------------------------------------------
+    # Validate response
+    # -----------------------------------------------------
+
+    if "current" not in data:
+        raise HTTPException(
+            status_code=502,
+            detail="Open-Meteo response is missing current weather data."
+        )
+
+    if "hourly" not in data:
+        raise HTTPException(
+            status_code=502,
+            detail="Open-Meteo response is missing hourly weather data."
+        )
 
     current = data["current"]
     hourly = data["hourly"]
 
-    current_time = current["time"]
+    # -----------------------------------------------------
+    # Find current hour
+    # -----------------------------------------------------
 
-    if current_time in hourly["time"]:
-        current_index = hourly["time"].index(current_time)
+    current_time = current.get("time")
+
+    hourly_times = hourly.get("time", [])
+
+    if current_time in hourly_times:
+        current_index = hourly_times.index(current_time)
     else:
         current_index = 0
 
-    rain_probability = hourly["precipitation_probability"][current_index]
+    # -----------------------------------------------------
+    # Rain probability
+    # -----------------------------------------------------
 
-    weather_data = {
-        "temperature": current["temperature_2m"],
-        "humidity": current["relative_humidity_2m"],
-        "wind_speed": current["wind_speed_10m"],
-        "rainfall": current["precipitation"],
-        "rain_probability": rain_probability
-    }
+    rain_probability_list = hourly.get(
+        "precipitation_probability",
+        []
+    )
+
+    if rain_probability_list:
+        rain_probability = (
+            rain_probability_list[current_index]
+            if current_index < len(rain_probability_list)
+            else rain_probability_list[0]
+        )
+    else:
+        rain_probability = 0
+
+    # -----------------------------------------------------
+    # Extract weather values
+    # -----------------------------------------------------
 
     try:
+        weather_data = {
+            "temperature": current["temperature_2m"],
+            "humidity": current["relative_humidity_2m"],
+            "wind_speed": current["wind_speed_10m"],
+            "rainfall": current["precipitation"],
+            "rain_probability": rain_probability,
+        }
+
+    except KeyError as error:
+
+        print("MISSING WEATHER FIELD:")
+        print(error)
+
+        raise HTTPException(
+            status_code=502,
+            detail=f"Open-Meteo response is missing field: {error}"
+        )
+
+    # -----------------------------------------------------
+    # Calculate ASTRA risk
+    # -----------------------------------------------------
+
+    try:
+
         risk = calculate_risk(weather_data)
 
     except ValueError as error:
+
+        print("RISK ENGINE ERROR:")
+        print(error)
+
         raise HTTPException(
             status_code=500,
-            detail=str(error)
+            detail=f"Risk engine error: {error}"
         )
+
+    except Exception as error:
+
+        print("UNEXPECTED RISK ENGINE ERROR:")
+        print(error)
+
+        raise HTTPException(
+            status_code=500,
+            detail=f"Unexpected risk engine error: {error}"
+        )
+
+    # -----------------------------------------------------
+    # Final response
+    # -----------------------------------------------------
 
     return {
         "location": {
