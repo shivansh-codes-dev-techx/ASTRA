@@ -1,6 +1,10 @@
 import { ShieldAlert } from "lucide-react";
 
 function RiskCard({ risk }) {
+  if (!risk) {
+    return null;
+  }
+
   const levelStyles = {
     LOW: "text-green-400 border-green-500/30",
     MODERATE: "text-yellow-400 border-yellow-500/30",
