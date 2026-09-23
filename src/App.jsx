@@ -46,6 +46,19 @@ const locations = {
   Delhi: [28.6139, 77.209],
   Noida: [28.5355, 77.391],
   Agra: [27.1767, 78.0081],
+
+  // Additional real locations for broader live-weather testing
+  Mumbai: [19.076, 72.8777],
+  Bengaluru: [12.9716, 77.5946],
+  Kolkata: [22.5726, 88.3639],
+  Chennai: [13.0827, 80.2707],
+  Hyderabad: [17.385, 78.4867],
+  Jaipur: [26.9124, 75.7873],
+  Lucknow: [26.8467, 80.9462],
+  Guwahati: [26.1445, 91.7362],
+  Bhubaneswar: [20.2961, 85.8245],
+  Visakhapatnam: [17.6868, 83.2185],
+  Hazaribag: [23.9925, 85.3637],
 };
 
 const navItems = [
@@ -385,7 +398,7 @@ function RoutePlanner() {
 
   return (
     <AppShell data={data}>
-      <div className="relative z-0 isolate min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
+      <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
         <div className="pointer-events-none absolute -left-32 top-20 h-96 w-96 rounded-full bg-cyan-500/10 blur-[130px]" />
         <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-violet-600/10 blur-[130px]" />
 
@@ -531,7 +544,7 @@ function RoutePlanner() {
               </div>
             </section>
 
-            <section className="relative z-0 isolate overflow-hidden rounded-[36px] border border-white/10 bg-[#070b17]">
+            <section className="relative overflow-hidden rounded-[36px] border border-white/10 bg-[#070b17]">
               <div className="absolute left-6 top-6 z-20 rounded-2xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-xl">
                 <p className="text-[9px] uppercase tracking-widest text-slate-500">
                   LIVE ROUTE
@@ -541,7 +554,7 @@ function RoutePlanner() {
                 </p>
               </div>
 
-              <div className="relative z-0 h-full min-h-[600px]">
+              <div className="h-full min-h-[600px]">
                 <RouteMap
                   from={data.coordinates}
                   to={destinationCoordinates}
@@ -659,7 +672,7 @@ function RiskMapPage() {
 
   return (
     <AppShell data={data}>
-      <div className="relative z-0 isolate min-h-[calc(100vh-73px)] overflow-hidden bg-[#03050c]">
+      <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#03050c]">
         <main className="mx-auto max-w-[1700px] px-5 py-10 sm:px-8 lg:px-12">
           <div className="mb-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div>
@@ -685,7 +698,7 @@ function RiskMapPage() {
             </div>
           </div>
 
-          <div className="relative z-0 isolate overflow-hidden rounded-[36px] border border-violet-400/15 bg-[#070b17]">
+          <div className="relative overflow-hidden rounded-[36px] border border-violet-400/15 bg-[#070b17]">
             <div className="absolute left-5 top-5 z-10 rounded-2xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-xl">
               <div className="flex items-center gap-2">
                 <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
@@ -694,7 +707,7 @@ function RiskMapPage() {
               <p className="mt-1 text-[9px] text-slate-500">{data.location}</p>
             </div>
 
-            <div className="relative z-0 min-h-[620px]">
+            <div className="min-h-[620px]">
               <MapCard
                 location={data.location}
                 risk={data.risk || { score: 0, level: "LOW", factors: [] }}
