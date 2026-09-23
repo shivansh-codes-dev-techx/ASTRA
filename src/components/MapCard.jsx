@@ -227,9 +227,21 @@ function MapCard({
         EXTREME: "#ef4444",
     };
 
+    const normalizedScore = Math.max(
+        0,
+        Math.min(100, Number(risk?.score ?? 0))
+    );
+
     const riskColor =
         riskColors[risk?.level] ||
         riskColors.MODERATE;
+
+    const riskDescription = {
+        LOW: "Environmental conditions are currently within the lower-risk range.",
+        MODERATE: "Changing environmental conditions are being monitored.",
+        HIGH: "Elevated environmental risk is currently detected.",
+        EXTREME: "Severe environmental conditions are currently detected.",
+    }[risk?.level] || "Waiting for live risk assessment.";
 
     /* ============================================================
        ROUTE CHANGE
@@ -449,6 +461,49 @@ function MapCard({
                         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                     />
 
+                    {/* LIVE RISK STATUS */}
+                    <div
+                        className="pointer-events-none absolute left-4 top-4 z-[1000] w-[240px] rounded-2xl border border-white/10 bg-black/70 p-4 shadow-2xl backdrop-blur-xl"
+                    >
+                        <div className="flex items-center justify-between gap-3">
+                            <div>
+                                <p className="text-[9px] uppercase tracking-[0.25em] text-slate-500">
+                                    Live Risk
+                                </p>
+                                <p
+                                    className="mt-1 text-sm font-bold"
+                                    style={{ color: riskColor }}
+                                >
+                                    {risk?.level || "LOADING"}
+                                </p>
+                            </div>
+
+                            <div className="text-right">
+                                <p
+                                    className="text-3xl font-black"
+                                    style={{ color: riskColor }}
+                                >
+                                    {risk?.score ?? "--"}
+                                </p>
+                                <p className="text-[9px] text-slate-500">/ 100</p>
+                            </div>
+                        </div>
+
+                        <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/10">
+                            <div
+                                className="h-full rounded-full transition-all duration-700"
+                                style={{
+                                    width: `${normalizedScore}%`,
+                                    backgroundColor: riskColor,
+                                }}
+                            />
+                        </div>
+
+                        <p className="mt-3 text-[10px] leading-4 text-slate-400">
+                            {riskDescription}
+                        </p>
+                    </div>
+
                     {/* Current location */}
 
                     <MapRecenter
@@ -596,6 +651,33 @@ function MapCard({
                 </MapContainer>
 
             </div>
+
+            {/* LIVE RISK FACTORS */}
+            {risk?.factors?.length > 0 && (
+                <div className="border-t border-white/5 bg-black/20 px-4 py-4 sm:px-5">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div>
+                            <p className="text-[9px] uppercase tracking-[0.25em] text-slate-500">
+                                Current Risk Contributors
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                                Reported by the ASTRA risk engine for {location}.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-wrap gap-2">
+                            {risk.factors.map((factor, index) => (
+                                <span
+                                    key={`${factor}-${index}`}
+                                    className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-[10px] text-slate-300"
+                                >
+                                    {factor}
+                                </span>
+                            ))}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* ======================================================
           ROUTE FOOTER
