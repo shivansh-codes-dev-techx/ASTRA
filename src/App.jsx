@@ -78,6 +78,14 @@ function App() {
   const currentRisk =
     weatherData?.risk || null;
 
+  // Keep a safe risk object for UI elements that may render
+  // while the API response is still being populated.
+  const safeRisk = {
+    score: currentRisk?.score ?? 0,
+    level: currentRisk?.level ?? "LOADING",
+    factors: currentRisk?.factors ?? [],
+  };
+
   const apiLocation =
     weatherData?.location || null;
 
@@ -895,11 +903,11 @@ function App() {
                     </p>
 
                     <p className="mt-2 text-2xl font-bold text-amber-300">
-                      {currentRisk.level}
+                      {safeRisk.level}
                     </p>
 
                     <p className="mt-1 text-xs text-slate-400">
-                      Risk Score {currentRisk.score}/100
+                      Risk Score {safeRisk.score}/100
                     </p>
 
                   </div>
@@ -920,7 +928,7 @@ function App() {
                   <div
                     className="h-full rounded-full bg-gradient-to-r from-amber-400 to-orange-500"
                     style={{
-                      width: `${currentRisk.score}%`,
+                      width: `${safeRisk.score}%`,
                     }}
                   />
 
@@ -1280,7 +1288,7 @@ function App() {
             ) : (
 
               <EmergencyMode
-                risk={currentRisk}
+                risk={safeRisk}
                 location={location}
                 onClose={() =>
                   setEmergencyMode(false)
