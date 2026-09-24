@@ -114,139 +114,94 @@ function AppShell({ children, data }) {
 
   return (
     <div className="min-h-screen bg-[#03040b] text-white">
-      <header className="sticky top-0 z-50 px-3 pt-3 sm:px-5 lg:px-7">
-        <div className="mx-auto max-w-[1700px]">
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-[#070a14]/70 shadow-[0_8px_40px_rgba(0,0,0,.35)] backdrop-blur-2xl">
-            <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(110deg,rgba(34,211,238,.06),transparent_35%,rgba(139,92,246,.07))]" />
-            <div className="pointer-events-none absolute -left-20 top-0 h-20 w-48 rounded-full bg-cyan-400/10 blur-3xl" />
-            <div className="pointer-events-none absolute right-0 top-0 h-20 w-48 rounded-full bg-violet-500/10 blur-3xl" />
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/80 px-5 py-4 backdrop-blur-2xl sm:px-8">
+        <div className="mx-auto flex max-w-[1700px] items-center justify-between">
+          <Link to="/" className="flex items-center gap-3">
+            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15">
+              <Globe2 size={21} className="text-violet-200" />
+            </div>
+            <div>
+              <p className="font-bold tracking-[0.2em]">ASTRA</p>
+              <p className="text-[8px] uppercase tracking-[0.25em] text-slate-500">
+                Climate Risk Intelligence
+              </p>
+            </div>
+          </Link>
 
-            <div className="relative flex min-h-[68px] items-center justify-between gap-4 px-3 py-2 sm:px-5">
-              <Link
-                to="/"
-                className="group flex shrink-0 items-center gap-3 rounded-xl px-1.5 py-1 transition hover:bg-white/[0.04]"
-              >
-                <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-xl border border-cyan-300/25 bg-gradient-to-br from-cyan-400/15 to-violet-500/15 shadow-[0_0_24px_rgba(34,211,238,.08)]">
-                  <div className="absolute inset-0 bg-cyan-300/5 blur-md transition group-hover:bg-cyan-300/10" />
-                  <Globe2 size={21} className="relative text-cyan-200" />
-                </div>
-
-                <div className="hidden sm:block">
-                  <p className="font-black tracking-[0.22em]">ASTRA</p>
-                  <p className="text-[8px] uppercase tracking-[0.25em] text-slate-500">
-                    Climate Risk Intelligence
-                  </p>
-                </div>
-              </Link>
-
-              <nav className="hidden items-center gap-1 rounded-xl border border-white/10 bg-black/20 p-1 lg:flex">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = pathname === item.path;
-
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      className={`group relative flex items-center gap-2 rounded-lg px-3 py-2.5 text-[11px] font-medium transition-all duration-300 ${
-                        active
-                          ? "text-white shadow-[0_0_22px_rgba(139,92,246,.16)]"
-                          : "text-slate-400 hover:bg-white/[0.06] hover:text-white"
-                      }`}
-                    >
-                      {active && (
-                        <span className="absolute inset-0 rounded-lg border border-violet-400/20 bg-gradient-to-r from-cyan-400/10 via-violet-500/15 to-violet-400/10" />
-                      )}
-
-                      <span className="relative flex items-center gap-2">
-                        <Icon
-                          size={14}
-                          className={
-                            active
-                              ? "text-cyan-300"
-                              : "text-slate-500 transition-colors group-hover:text-cyan-300"
-                          }
-                        />
-                        <span>{item.label}</span>
-                      </span>
-                    </Link>
-                  );
-                })}
-              </nav>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <div className="hidden items-center gap-2 rounded-xl border border-emerald-400/15 bg-emerald-400/[0.035] px-3 py-2 sm:flex">
-                  <span className="relative flex h-2 w-2">
-                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-50" />
-                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400 shadow-[0_0_10px_rgba(52,211,153,.8)]" />
-                  </span>
-                  <div>
-                    <p className="text-[9px] font-bold tracking-wide text-emerald-300">
-                      LIVE
-                    </p>
-                    <p className="text-[8px] text-slate-500">Real-time data</p>
-                  </div>
-                </div>
-
-                {data && (
-                  <div className="relative hidden md:block">
-                    <select
-                      value={data.location}
-                      onChange={(e) => data.setLocation(e.target.value)}
-                      className="h-10 appearance-none rounded-xl border border-white/10 bg-white/[0.035] py-2.5 pl-9 pr-8 text-xs text-slate-200 outline-none transition hover:border-cyan-300/20 hover:bg-white/[0.06] focus:border-cyan-300/30"
-                    >
-                      {Object.keys(locations).map((city) => (
-                        <option key={city} value={city} className="bg-slate-950">
-                          {city}
-                        </option>
-                      ))}
-                    </select>
-                    <MapPin
-                      size={14}
-                      className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300"
-                    />
-                  </div>
-                )}
-
-                <button
-                  onClick={() => setMobileOpen((v) => !v)}
-                  className="rounded-xl border border-white/10 bg-white/[0.035] p-2.5 text-slate-300 transition hover:border-cyan-300/20 hover:bg-white/[0.07] hover:text-white lg:hidden"
-                  aria-label="Toggle navigation"
+          <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.02] p-1 lg:flex">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              const active = pathname === item.path;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs transition ${
+                    active
+                      ? "bg-violet-500/20 text-white"
+                      : "text-slate-400 hover:bg-white/5 hover:text-white"
+                  }`}
                 >
-                  {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-                </button>
-              </div>
+                  <Icon size={14} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+
+          <div className="flex items-center gap-2">
+            <div className="hidden rounded-xl border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2 sm:block">
+              <p className="text-[9px] font-semibold text-emerald-300">● LIVE</p>
+              <p className="text-[8px] text-slate-500">Real-time data</p>
             </div>
 
-            {mobileOpen && (
-              <nav className="relative mx-2 mb-2 grid gap-1 rounded-xl border border-white/10 bg-black/35 p-2 backdrop-blur-2xl lg:hidden">
-                {navItems.map((item) => {
-                  const Icon = item.icon;
-                  const active = pathname === item.path;
-
-                  return (
-                    <Link
-                      key={item.path}
-                      to={item.path}
-                      onClick={() => setMobileOpen(false)}
-                      className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
-                        active
-                          ? "border border-violet-400/20 bg-violet-500/10 text-white"
-                          : "text-slate-300 hover:bg-white/[0.06] hover:text-white"
-                      }`}
-                    >
-                      <Icon
-                        size={17}
-                        className={active ? "text-cyan-300" : "text-slate-500"}
-                      />
-                      {item.label}
-                    </Link>
-                  );
-                })}
-              </nav>
+            {data && (
+              <div className="relative hidden sm:block">
+                <select
+                  value={data.location}
+                  onChange={(e) => data.setLocation(e.target.value)}
+                  className="appearance-none rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-9 pr-8 text-xs outline-none"
+                >
+                  {Object.keys(locations).map((city) => (
+                    <option key={city} value={city} className="bg-slate-950">
+                      {city}
+                    </option>
+                  ))}
+                </select>
+                <MapPin
+                  size={14}
+                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300"
+                />
+              </div>
             )}
+
+            <button
+              onClick={() => setMobileOpen((v) => !v)}
+              className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 lg:hidden"
+            >
+              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
+            </button>
           </div>
         </div>
+
+        {mobileOpen && (
+          <nav className="mx-auto mt-3 grid max-w-[1700px] gap-1 rounded-2xl border border-white/10 bg-black/80 p-2 lg:hidden">
+            {navItems.map((item) => {
+              const Icon = item.icon;
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  onClick={() => setMobileOpen(false)}
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-white/5"
+                >
+                  <Icon size={17} />
+                  {item.label}
+                </Link>
+              );
+            })}
+          </nav>
+        )}
       </header>
 
       {children}
@@ -642,6 +597,79 @@ function RoutePlanner() {
 }
 
 
+
+function WeatherLoadingScreen() {
+  return (
+    <div className="relative flex min-h-[520px] items-center justify-center overflow-hidden rounded-[32px] border border-cyan-400/15 bg-[#040914] px-6 py-12">
+      <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-cyan-500/10 blur-[110px]" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-violet-600/10 blur-[110px]" />
+
+      <div className="relative z-10 w-full max-w-xl text-center">
+        <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
+          <div className="absolute inset-0 animate-ping rounded-full border border-cyan-300/20" />
+          <div className="absolute inset-2 animate-[spin_8s_linear_infinite] rounded-full border border-dashed border-violet-400/25" />
+          <div className="absolute inset-5 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 shadow-[0_0_45px_rgba(34,211,238,.12)] backdrop-blur-xl" />
+          <CloudRain size={27} className="relative z-10 animate-pulse text-cyan-300" />
+        </div>
+
+        <p className="mt-8 text-[10px] font-semibold uppercase tracking-[0.45em] text-cyan-300">
+          ASTRA · Atmospheric Intelligence
+        </p>
+
+        <h2 className="mt-3 text-2xl font-black tracking-tight sm:text-3xl">
+          Scanning the atmosphere
+        </h2>
+
+        <p className="mx-auto mt-3 max-w-md text-sm leading-6 text-slate-500">
+          Fetching live environmental data and preparing the current risk assessment.
+        </p>
+
+        <div className="mx-auto mt-8 grid max-w-md grid-cols-3 gap-3">
+          {[
+            ["Temperature", Thermometer],
+            ["Humidity", Droplets],
+            ["Wind", Wind],
+          ].map(([label, Icon], index) => (
+            <div
+              key={label}
+              className="rounded-2xl border border-white/10 bg-white/[0.035] p-4 text-left shadow-[0_8px_30px_rgba(0,0,0,.16)] backdrop-blur-xl"
+            >
+              <Icon
+                size={16}
+                className="text-cyan-300"
+                style={{
+                  animation: `pulse ${1.4 + index * 0.25}s ease-in-out infinite`,
+                }}
+              />
+              <p className="mt-3 text-[9px] uppercase tracking-wider text-slate-600">
+                {label}
+              </p>
+              <div className="mt-2 h-5 w-12 animate-pulse rounded bg-white/10" />
+            </div>
+          ))}
+        </div>
+
+        <div className="mx-auto mt-7 h-1 max-w-md overflow-hidden rounded-full bg-white/5">
+          <div className="h-full w-1/2 animate-[loadingbar_1.8s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-400 via-violet-400 to-cyan-400" />
+        </div>
+
+        <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-slate-600">
+          <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-300" />
+          Connecting to live weather intelligence
+        </div>
+
+        <style>{`
+          @keyframes loadingbar {
+            0% { transform: translateX(-110%); }
+            50% { transform: translateX(40%); }
+            100% { transform: translateX(210%); }
+          }
+        `}</style>
+      </div>
+    </div>
+  );
+}
+
 function WeatherPage() {
   const data = useAstraData();
   const { weather, risk } = data;
@@ -685,9 +713,7 @@ function WeatherPage() {
               {weather ? (
                 <WeatherCard weather={{ ...weather, location: data.location }} />
               ) : (
-                <div className="flex min-h-64 items-center justify-center text-sm text-slate-500">
-                  Connecting to live weather...
-                </div>
+                <WeatherLoadingScreen />
               )}
             </div>
             <div className="rounded-[32px] border border-cyan-400/15 bg-gradient-to-br from-cyan-400/[0.06] to-transparent p-6">
