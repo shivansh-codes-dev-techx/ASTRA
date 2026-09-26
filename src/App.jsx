@@ -76,9 +76,63 @@ const navItems = [
 ];
 
 function useAstraData() {
-  const [location, setLocation] = useState("Ghaziabad");
+  const [location, setLocationState] = useState("Ghaziabad");
+  const [coordinates, setCoordinates] = useState(locations.Ghaziabad);
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [isLiveLocation, setIsLiveLocation] = useState(false);
+  const [locationStatus, setLocationStatus] = useState("Detecting location...");
+
+  const setLocation = (city) => {
+    const nextCoordinates = locations[city];
+    if (!nextCoordinates) return;
+
+    setLocationState(city);
+    setCoordinates(nextCoordinates);
+    setIsLiveLocation(false);
+    setLocationStatus("Manual location");
+  };
+
+  const useLiveLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationStatus("GPS unavailable");
+      return;
+    }
+
+    setLocationStatus("Locating device...");
+
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const nextCoordinates = [
+          position.coords.latitude,
+          position.coords.longitude,
+        ];
+
+        setCoordinates(nextCoordinates);
+        setLocationState("Live Location");
+        setIsLiveLocation(true);
+        setLocationStatus("GPS location active");
+      },
+      (error) => {
+        console.warn("ASTRA location:", error.message);
+        setLocationStatus(
+          error.code === 1
+            ? "Location permission denied"
+            : "Unable to detect location"
+        );
+        setIsLiveLocation(false);
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 30000,
+      }
+    );
+  };
+
+  useEffect(() => {
+    useLiveLocation();
+  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -86,7 +140,7 @@ function useAstraData() {
     async function load() {
       try {
         setLoading(true);
-        const [latitude, longitude] = locations[location];
+        const [latitude, longitude] = coordinates;
         const data = await getWeatherByCoordinates(latitude, longitude);
         if (!cancelled) setWeatherData(data);
       } catch (error) {
@@ -100,14 +154,17 @@ function useAstraData() {
     return () => {
       cancelled = true;
     };
-  }, [location]);
+  }, [coordinates]);
 
   return {
     location,
     setLocation,
+    useLiveLocation,
+    locationStatus,
+    isLiveLocation,
     weather: weatherData?.weather || null,
     risk: weatherData?.risk || null,
-    coordinates: locations[location],
+    coordinates,
     loading,
   };
 }
@@ -160,23 +217,44 @@ function AppShell({ children, data }) {
             </div>
 
             {data && (
-              <div className="relative hidden sm:block">
-                <select
-                  value={data.location}
-                  onChange={(e) => data.setLocation(e.target.value)}
-                  className="appearance-none rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-9 pr-8 text-xs outline-none"
+              <>
+                <button
+                  type="button"
+                  onClick={data.useLiveLocation}
+                  title={data.locationStatus}
+                  className={`hidden items-center gap-2 rounded-xl border px-3 py-2.5 text-[10px] font-semibold transition sm:flex ${
+                    data.isLiveLocation
+                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.08)]"
+                      : "border-cyan-400/20 bg-cyan-400/[0.05] text-cyan-300 hover:bg-cyan-400/10"
+                  }`}
                 >
-                  {Object.keys(locations).map((city) => (
-                    <option key={city} value={city} className="bg-slate-950">
-                      {city}
-                    </option>
-                  ))}
-                </select>
-                <MapPin
-                  size={14}
-                  className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300"
-                />
-              </div>
+                  <LocateFixed size={14} />
+                  {data.isLiveLocation ? "LIVE GPS" : "USE LIVE"}
+                </button>
+
+                <div className="relative hidden sm:block">
+                  <select
+                    value={data.location}
+                    onChange={(e) => data.setLocation(e.target.value)}
+                    className="appearance-none rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-9 pr-8 text-xs outline-none"
+                  >
+                    {data.isLiveLocation && (
+                      <option value="Live Location" className="bg-slate-950">
+                        Live Location
+                      </option>
+                    )}
+                    {Object.keys(locations).map((city) => (
+                      <option key={city} value={city} className="bg-slate-950">
+                        {city}
+                      </option>
+                    ))}
+                  </select>
+                  <MapPin
+                    size={14}
+                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300"
+                  />
+                </div>
+              </>
             )}
 
             <button
@@ -190,6 +268,20 @@ function AppShell({ children, data }) {
 
         {mobileOpen && (
           <nav className="mx-auto mt-3 grid max-w-[1700px] gap-1 rounded-2xl border border-white/10 bg-black/90 p-2 backdrop-blur-xl lg:hidden">
+            {data && (
+              <button
+                type="button"
+                onClick={() => {
+                  data.useLiveLocation();
+                  setMobileOpen(false);
+                }}
+                className="mb-1 flex items-center gap-3 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.05] px-4 py-3 text-sm text-cyan-300"
+              >
+                <LocateFixed size={17} />
+                {data.isLiveLocation ? "Live GPS Active" : "Use My Live Location"}
+              </button>
+            )}
+
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.path;
