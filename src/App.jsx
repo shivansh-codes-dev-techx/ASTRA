@@ -1420,6 +1420,8 @@ function AssistantPage() {
 
 
 function DevelopersPage() {
+  const data = useAstraData();
+
   const developers = [
     {
       name: "Shivansh Tiwari",
@@ -1466,7 +1468,8 @@ function DevelopersPage() {
   ];
 
   return (
-    <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
+    <AppShell data={data}>
+      <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
       <div className="pointer-events-none absolute left-1/4 top-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-[140px]" />
       <div className="pointer-events-none absolute right-0 top-1/4 h-96 w-96 rounded-full bg-violet-600/10 blur-[140px]" />
 
@@ -1574,7 +1577,8 @@ function DevelopersPage() {
           </p>
         </div>
       </main>
-    </div>
+      </div>
+    </AppShell>
   );
 }
 
