@@ -250,6 +250,66 @@ function Metric({ icon: Icon, label, value, color = "text-cyan-300" }) {
   );
 }
 
+function AboutUs() {
+  return (
+    <section className="relative overflow-hidden border-t border-white/10 bg-[#030611] px-6 py-24">
+      <div className="pointer-events-none absolute left-1/2 top-0 h-80 w-80 -translate-x-1/2 rounded-full bg-cyan-500/10 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-violet-500/10 blur-[120px]" />
+      <div className="relative mx-auto max-w-6xl">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-4 py-2 text-xs font-medium uppercase tracking-[0.25em] text-cyan-300">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-300 shadow-[0_0_10px_rgba(34,211,238,0.8)]" />
+            About ASTRA
+          </div>
+          <h2 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
+            Built for a <span className="bg-gradient-to-r from-cyan-300 to-violet-400 bg-clip-text text-transparent">safer tomorrow.</span>
+          </h2>
+          <p className="mt-6 text-base leading-8 text-slate-400 md:text-lg">
+            ASTRA is an AI-powered extreme weather and disaster awareness platform designed to turn real-time environmental data into meaningful risk awareness and actionable guidance.
+          </p>
+        </div>
+        <div className="mt-14 grid gap-6 md:grid-cols-2">
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-8 shadow-2xl backdrop-blur-xl">
+            <div className="mb-6 flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-400/20 bg-cyan-400/10 text-xl">◈</div>
+            <h3 className="text-xl font-semibold text-white">What is ASTRA?</h3>
+            <p className="mt-4 leading-7 text-slate-400">
+              ASTRA brings weather intelligence, risk assessment, interactive maps, route planning, emergency awareness, and contextual assistance together in one platform.
+            </p>
+            <p className="mt-4 leading-7 text-slate-400">
+              Our goal is simple — help people understand environmental risk before it becomes an emergency.
+            </p>
+          </div>
+          <div className="rounded-3xl border border-white/10 bg-white/[0.035] p-8 shadow-2xl backdrop-blur-xl">
+            <h3 className="text-xl font-semibold text-white">What ASTRA brings together</h3>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2">
+              {[
+                ["🌦️", "Real-time Weather"],
+                ["⚠️", "Dynamic Risk Assessment"],
+                ["🗺️", "Interactive Risk Maps"],
+                ["🚗", "Route Planning"],
+                ["🚨", "Emergency Awareness"],
+                ["🤖", "AI Assistance"],
+              ].map(([icon, title]) => (
+                <div key={title} className="rounded-2xl border border-white/10 bg-black/20 p-4 transition hover:border-cyan-400/30 hover:bg-white/[0.05]">
+                  <div className="text-xl">{icon}</div>
+                  <p className="mt-2 text-sm font-medium text-slate-200">{title}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+        <div className="mt-6 rounded-3xl border border-cyan-400/20 bg-gradient-to-r from-cyan-400/[0.07] to-violet-500/[0.07] p-8 text-center backdrop-blur-xl">
+          <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Achievement</p>
+          <h3 className="mt-3 text-2xl font-bold text-white">🏆 First Position — NEXXATHON 2026</h3>
+          <p className="mt-3 text-sm text-slate-400">
+            Developed by a student team at SRM Institute of Science &amp; Technology, Delhi-NCR Campus, Ghaziabad.
+          </p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function Dashboard() {
   const data = useAstraData();
   const { weather, risk, location } = data;
@@ -323,6 +383,8 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      <AboutUs />
     </AppShell>
   );
 }
