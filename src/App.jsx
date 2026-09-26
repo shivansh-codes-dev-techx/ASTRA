@@ -31,6 +31,9 @@ import {
 } from "react-router-dom";
 
 import heroAnimation from "./assets/astra-hero.mp4";
+import tanmayPhoto from "./assets/tanmay.jpeg";
+import rishavPhoto from "./assets/risabh.jpeg";
+import shivanshPhoto from "./assets/shivansh.jpeg";
 import { getWeatherByCoordinates } from "./services/api";
 import { getAssistantResponse } from "./services/assistantService";
 import { getRoute } from "./services/routeService";
@@ -69,6 +72,7 @@ const navItems = [
   { label: "Alerts", path: "/alerts", icon: Bell },
   { label: "Emergency", path: "/emergency", icon: ShieldAlert },
   { label: "AI Assistant", path: "/assistant", icon: Bot },
+  { label: "Developers", path: "/developers", icon: Sparkles },
 ];
 
 function useAstraData() {
@@ -114,13 +118,13 @@ function AppShell({ children, data }) {
 
   return (
     <div className="min-h-screen bg-[#03040b] text-white">
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/80 px-5 py-4 backdrop-blur-2xl sm:px-8">
-        <div className="mx-auto flex max-w-[1700px] items-center justify-between">
-          <Link to="/" className="flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15">
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/80 px-4 py-3 backdrop-blur-2xl sm:px-6">
+        <div className="mx-auto grid max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center gap-3">
+          <Link to="/" className="flex min-w-0 items-center gap-3 justify-self-start">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15">
               <Globe2 size={21} className="text-violet-200" />
             </div>
-            <div>
+            <div className="hidden sm:block">
               <p className="font-bold tracking-[0.2em]">ASTRA</p>
               <p className="text-[8px] uppercase tracking-[0.25em] text-slate-500">
                 Climate Risk Intelligence
@@ -128,7 +132,7 @@ function AppShell({ children, data }) {
             </div>
           </Link>
 
-          <nav className="hidden items-center gap-1 rounded-2xl border border-white/10 bg-white/[0.02] p-1 lg:flex">
+          <nav className="hidden items-center justify-center gap-0.5 rounded-2xl border border-white/10 bg-white/[0.025] p-1 shadow-[0_0_30px_rgba(34,211,238,0.04)] lg:flex">
             {navItems.map((item) => {
               const Icon = item.icon;
               const active = pathname === item.path;
@@ -136,21 +140,21 @@ function AppShell({ children, data }) {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs transition ${
+                  className={`flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] whitespace-nowrap transition-all ${
                     active
-                      ? "bg-violet-500/20 text-white"
-                      : "text-slate-400 hover:bg-white/5 hover:text-white"
+                      ? "border border-violet-400/20 bg-violet-500/20 text-white shadow-[0_0_18px_rgba(139,92,246,0.14)]"
+                      : "border border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
                   }`}
                 >
-                  <Icon size={14} />
+                  <Icon size={13} />
                   {item.label}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-2">
-            <div className="hidden rounded-xl border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2 sm:block">
+          <div className="flex items-center gap-2 justify-self-end">
+            <div className="hidden rounded-xl border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2 xl:block">
               <p className="text-[9px] font-semibold text-emerald-300">● LIVE</p>
               <p className="text-[8px] text-slate-500">Real-time data</p>
             </div>
@@ -185,15 +189,20 @@ function AppShell({ children, data }) {
         </div>
 
         {mobileOpen && (
-          <nav className="mx-auto mt-3 grid max-w-[1700px] gap-1 rounded-2xl border border-white/10 bg-black/80 p-2 lg:hidden">
+          <nav className="mx-auto mt-3 grid max-w-[1700px] gap-1 rounded-2xl border border-white/10 bg-black/90 p-2 backdrop-blur-xl lg:hidden">
             {navItems.map((item) => {
               const Icon = item.icon;
+              const active = pathname === item.path;
               return (
                 <Link
                   key={item.path}
                   to={item.path}
                   onClick={() => setMobileOpen(false)}
-                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm text-slate-300 hover:bg-white/5"
+                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
+                    active
+                      ? "bg-violet-500/20 text-white"
+                      : "text-slate-300 hover:bg-white/5"
+                  }`}
                 >
                   <Icon size={17} />
                   {item.label}
@@ -1409,6 +1418,166 @@ function AssistantPage() {
 
 
 
+
+function DevelopersPage() {
+  const developers = [
+    {
+      name: "Shivansh Tiwari",
+      role: "Backend & System Integration Lead",
+      photo: shivanshPhoto,
+      bio:
+        "Built and integrated the FastAPI backend, weather services, risk pipeline, routing services and production deployment flow.",
+      contributions: [
+        "FastAPI & REST APIs",
+        "Open-Meteo Integration",
+        "Frontend–Backend Integration",
+        "Render & Vercel Deployment",
+      ],
+      stack: ["Python", "FastAPI", "REST APIs", "Git"],
+    },
+    {
+      name: "Rishav Raj",
+      role: "Frontend Developer",
+      photo: rishavPhoto,
+      bio:
+        "Designed and developed ASTRA's interactive frontend experience, responsive interface and visual data presentation.",
+      contributions: [
+        "React + Vite Interface",
+        "Responsive UI",
+        "Leaflet Map Experience",
+        "Dashboard & User Flows",
+      ],
+      stack: ["React", "Vite", "Tailwind CSS", "Leaflet"],
+    },
+    {
+      name: "Tanmay Chaudhary",
+      role: "AI/ML & Risk Engine Lead",
+      photo: tanmayPhoto,
+      bio:
+        "Developed the risk-scoring engine that transforms weather parameters into an understandable prototype risk level.",
+      contributions: [
+        "Risk Engine Architecture",
+        "Weighted Risk Scoring",
+        "Risk Validation",
+        "ML / Data Intelligence",
+      ],
+      stack: ["Python", "AI/ML", "Risk Engine", "Data Science"],
+    },
+  ];
+
+  return (
+    <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
+      <div className="pointer-events-none absolute left-1/4 top-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-[140px]" />
+      <div className="pointer-events-none absolute right-0 top-1/4 h-96 w-96 rounded-full bg-violet-600/10 blur-[140px]" />
+
+      <main className="relative mx-auto max-w-[1500px] px-5 py-12 sm:px-8 lg:px-12 lg:py-16">
+        <div className="mx-auto max-w-3xl text-center">
+          <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-cyan-300">
+            <Sparkles size={13} />
+            The Team Behind ASTRA
+          </div>
+
+          <h1 className="text-4xl font-black tracking-tight sm:text-6xl">
+            Meet the{" "}
+            <span className="bg-gradient-to-r from-cyan-300 via-white to-violet-400 bg-clip-text text-transparent">
+              Developers.
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-slate-400 sm:text-base">
+            Three developers, three core disciplines, one mission — building
+            ASTRA into a practical climate-risk intelligence platform.
+          </p>
+        </div>
+
+        <div className="mt-12 grid gap-6 lg:grid-cols-3">
+          {developers.map((developer) => (
+            <article
+              key={developer.name}
+              className="group relative overflow-hidden rounded-[32px] border border-white/10 bg-white/[0.035] shadow-2xl backdrop-blur-xl transition duration-500 hover:-translate-y-1 hover:border-cyan-400/25"
+            >
+              <div className="absolute inset-x-0 top-0 h-40 bg-gradient-to-b from-cyan-400/[0.10] to-transparent opacity-70" />
+
+              <div className="relative p-5">
+                <div className="relative overflow-hidden rounded-[24px] border border-white/10 bg-black/30">
+                  <img
+                    src={developer.photo}
+                    alt={developer.name}
+                    className="h-80 w-full object-cover object-center grayscale-[10%] transition duration-700 group-hover:scale-[1.03] group-hover:grayscale-0"
+                  />
+
+                  <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent p-5 pt-20">
+                    <span className="inline-flex rounded-full border border-cyan-300/20 bg-cyan-300/10 px-3 py-1 text-[9px] font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                      ASTRA Developer
+                    </span>
+                  </div>
+                </div>
+
+                <div className="px-2 pb-2 pt-6">
+                  <h2 className="text-2xl font-bold text-white">
+                    {developer.name}
+                  </h2>
+
+                  <p className="mt-1 text-sm font-medium text-cyan-300">
+                    {developer.role}
+                  </p>
+
+                  <p className="mt-5 text-sm leading-7 text-slate-400">
+                    {developer.bio}
+                  </p>
+
+                  <div className="mt-6">
+                    <p className="text-[9px] uppercase tracking-[0.25em] text-slate-500">
+                      Core Contributions
+                    </p>
+
+                    <div className="mt-3 space-y-2">
+                      {developer.contributions.map((item) => (
+                        <div
+                          key={item}
+                          className="flex items-center gap-3 rounded-xl border border-white/5 bg-black/20 px-3 py-2.5"
+                        >
+                          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-cyan-300 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+                          <span className="text-xs text-slate-300">{item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-6 flex flex-wrap gap-2">
+                    {developer.stack.map((tech) => (
+                      <span
+                        key={tech}
+                        className="rounded-full border border-white/10 bg-white/[0.03] px-3 py-1.5 text-[10px] text-slate-400"
+                      >
+                        {tech}
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+
+        <div className="mt-8 rounded-[28px] border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.06] via-white/[0.02] to-violet-500/[0.06] p-7 text-center backdrop-blur-xl sm:p-9">
+          <p className="text-[9px] uppercase tracking-[0.35em] text-slate-500">
+            Team Achievement
+          </p>
+          <h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
+            🏆 First Position — NEXXATHON 2026
+          </h2>
+          <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-400">
+            ASTRA was developed as a collaborative project by this team at
+            SRM Institute of Science &amp; Technology, Delhi-NCR Campus,
+            Ghaziabad.
+          </p>
+        </div>
+      </main>
+    </div>
+  );
+}
+
 function MiniInfo({ icon: Icon, label, value }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
@@ -1430,6 +1599,7 @@ function App() {
         <RouterRoute path="/alerts" element={<AlertsPage />} />
         <RouterRoute path="/emergency" element={<EmergencyPage />} />
         <RouterRoute path="/assistant" element={<AssistantPage />} />
+        <RouterRoute path="/developers" element={<DevelopersPage />} />
       </Routes>
     </BrowserRouter>
   );
