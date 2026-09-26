@@ -174,14 +174,14 @@ function AppShell({ children, data }) {
   const { pathname } = useLocation();
 
   return (
-    <div className="min-h-screen bg-[#03040b] text-white">
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/80 px-4 py-3 backdrop-blur-2xl sm:px-6">
-        <div className="mx-auto grid max-w-[1800px] grid-cols-[1fr_auto_1fr] items-center gap-3">
+    <div className="min-h-screen overflow-x-hidden bg-[#03040b] text-white">
+      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/90 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-2xl sm:px-6">
+        <div className="mx-auto grid max-w-[1800px] grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-3">
           <Link to="/" className="flex min-w-0 items-center gap-3 justify-self-start">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15">
               <Globe2 size={21} className="text-violet-200" />
             </div>
-            <div className="hidden sm:block">
+            <div className="hidden min-[420px]:block">
               <p className="font-bold tracking-[0.2em]">ASTRA</p>
               <p className="text-[8px] uppercase tracking-[0.25em] text-slate-500">
                 Climate Risk Intelligence
@@ -259,7 +259,7 @@ function AppShell({ children, data }) {
 
             <button
               onClick={() => setMobileOpen((v) => !v)}
-              className="rounded-xl border border-white/10 bg-white/[0.03] p-2.5 lg:hidden"
+              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] lg:hidden"
             >
               {mobileOpen ? <X size={18} /> : <Menu size={18} />}
             </button>
@@ -267,7 +267,7 @@ function AppShell({ children, data }) {
         </div>
 
         {mobileOpen && (
-          <nav className="mx-auto mt-3 grid max-w-[1700px] gap-1 rounded-2xl border border-white/10 bg-black/90 p-2 backdrop-blur-xl lg:hidden">
+          <nav className="mx-auto mt-3 grid max-h-[calc(100vh-90px)] max-w-[1700px] gap-1 overflow-y-auto rounded-2xl border border-white/10 bg-black/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
             {data && (
               <button
                 type="button"
@@ -435,7 +435,7 @@ function Dashboard() {
             <p className="text-xs uppercase tracking-[0.45em] text-cyan-300">
               A Safer Tomorrow
             </p>
-            <h1 className="mt-4 text-7xl font-black tracking-tight sm:text-8xl lg:text-9xl">
+            <h1 className="mt-4 text-5xl font-black tracking-tight sm:text-7xl lg:text-9xl">
               ASTRA
             </h1>
             <div className="mt-5 h-px w-24 bg-cyan-300" />
@@ -853,7 +853,7 @@ function WeatherPage() {
                 Atmospheric Intelligence
               </p>
             </div>
-            <h1 className="mt-5 max-w-4xl text-5xl font-black sm:text-7xl">
+            <h1 className="mt-5 max-w-4xl text-4xl font-black sm:text-5xl lg:text-7xl">
               The atmosphere,
               <br />
               <span className="text-cyan-300">decoded live.</span>
@@ -911,7 +911,7 @@ function RiskMapPage() {
           <div className="mb-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div>
               <p className="text-[10px] uppercase tracking-[0.4em] text-violet-300">Spatial Risk Intelligence</p>
-              <h1 className="mt-3 text-5xl font-black sm:text-7xl">
+              <h1 className="mt-3 text-4xl font-black sm:text-5xl lg:text-7xl">
                 See the
                 <br />
                 <span className="text-violet-300">risk layer.</span>
@@ -941,7 +941,7 @@ function RiskMapPage() {
               <p className="mt-1 text-[9px] text-slate-500">{data.location}</p>
             </div>
 
-            <div className="min-h-[620px]">
+            <div className="min-h-[420px] sm:min-h-[620px]">
               <MapCard
                 location={data.location}
                 risk={data.risk || { score: 0, level: "LOW", factors: [] }}
@@ -1095,7 +1095,7 @@ function AlertsPage() {
               </p>
             </div>
 
-            <h1 className="mt-5 text-5xl font-black sm:text-7xl">
+            <h1 className="mt-5 text-4xl font-black sm:text-5xl lg:text-7xl">
               Know before
               <br />
               <span className={tone.text}>it matters.</span>
@@ -1327,7 +1327,7 @@ function EmergencyPage() {
             </p>
           </div>
 
-          <h1 className="mt-6 text-5xl font-black sm:text-7xl">
+          <h1 className="mt-6 text-4xl font-black sm:text-5xl lg:text-7xl">
             When conditions
             <br />
             <span className="text-red-300">change, act.</span>
@@ -1434,7 +1434,7 @@ function AssistantPage() {
             <p className="mt-7 text-[10px] uppercase tracking-[0.45em] text-violet-300">
               ASTRA Intelligence
             </p>
-            <h1 className="mt-4 text-5xl font-black sm:text-7xl">
+            <h1 className="mt-4 text-4xl font-black sm:text-5xl lg:text-7xl">
               Ask the
               <br />
               <span className="text-violet-300">environment.</span>
@@ -1565,7 +1565,7 @@ function DevelopersPage() {
       <div className="pointer-events-none absolute left-1/4 top-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-[140px]" />
       <div className="pointer-events-none absolute right-0 top-1/4 h-96 w-96 rounded-full bg-violet-600/10 blur-[140px]" />
 
-      <main className="relative mx-auto max-w-[1500px] px-5 py-12 sm:px-8 lg:px-12 lg:py-16">
+      <main className="relative mx-auto max-w-[1500px] px-4 py-10 sm:px-8 lg:px-12 lg:py-16">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-5 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-4 py-2 text-[10px] font-semibold uppercase tracking-[0.3em] text-cyan-300">
             <Sparkles size={13} />
@@ -1585,7 +1585,7 @@ function DevelopersPage() {
           </p>
         </div>
 
-        <div className="mt-12 grid gap-6 lg:grid-cols-3">
+        <div className="mt-10 grid gap-5 sm:mt-12 sm:gap-6 lg:grid-cols-3">
           {developers.map((developer) => (
             <article
               key={developer.name}
@@ -1598,7 +1598,7 @@ function DevelopersPage() {
                   <img
                     src={developer.photo}
                     alt={developer.name}
-                    className="h-80 w-full object-cover object-center grayscale-[10%] transition duration-700 group-hover:scale-[1.03] group-hover:grayscale-0"
+                    className="aspect-[4/5] w-full object-cover object-center grayscale-[10%] transition duration-700 group-hover:scale-[1.03] group-hover:grayscale-0 sm:aspect-auto sm:h-80"
                   />
 
                   <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/90 via-black/35 to-transparent p-5 pt-20">
@@ -1609,7 +1609,7 @@ function DevelopersPage() {
                 </div>
 
                 <div className="px-2 pb-2 pt-6">
-                  <h2 className="text-2xl font-bold text-white">
+                  <h2 className="text-xl font-bold text-white sm:text-2xl">
                     {developer.name}
                   </h2>
 
@@ -1659,7 +1659,7 @@ function DevelopersPage() {
           <p className="text-[9px] uppercase tracking-[0.35em] text-slate-500">
             Team Achievement
           </p>
-          <h2 className="mt-3 text-2xl font-bold text-white sm:text-3xl">
+          <h2 className="mt-3 text-xl font-bold text-white sm:text-3xl">
             🏆 First Position — NEXXATHON 2026
           </h2>
           <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-slate-400">
