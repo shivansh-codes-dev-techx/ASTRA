@@ -23,25 +23,59 @@ export async function getWeatherByCoordinates(
 
   const data = await response.json();
 
+  // Validate the response before accessing nested properties
+  if (!data) {
+    throw new Error("Weather API returned an empty response.");
+  }
+
+  if (!data.weather) {
+    throw new Error(
+      "Weather API response is missing weather data."
+    );
+  }
+
+  if (!data.risk) {
+    throw new Error(
+      "Weather API response is missing risk data."
+    );
+  }
+
   return {
     location: {
-      latitude: data.location.latitude,
-      longitude: data.location.longitude,
+      latitude:
+        data.location?.latitude ?? latitude,
+      longitude:
+        data.location?.longitude ?? longitude,
     },
 
     weather: {
-      temperature: data.weather.temperature,
-      humidity: data.weather.humidity,
-      windSpeed: data.weather.wind_speed,
-      rainfall: data.weather.rainfall,
+      temperature:
+        data.weather.temperature ?? 0,
+
+      humidity:
+        data.weather.humidity ?? 0,
+
+      windSpeed:
+        data.weather.wind_speed ?? 0,
+
+      rainfall:
+        data.weather.rainfall ?? 0,
+
       rainProbability:
-        data.weather.rain_probability,
+        data.weather.rain_probability ?? 0,
     },
 
     risk: {
-      score: data.risk.score,
-      level: data.risk.level,
-      factors: data.risk.factors ?? [],
+      score:
+        data.risk.score ?? 0,
+
+      level:
+        data.risk.level ?? "LOW",
+
+      factors:
+        Array.isArray(data.risk.factors)
+          ? data.risk.factors
+          : [],
     },
   };
 }

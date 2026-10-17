@@ -216,3 +216,9 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+node_modules/
+*.backup
+*.nav-backup
+*.palette-backup
+*.responsive-backup
+*.final-audit-backup
