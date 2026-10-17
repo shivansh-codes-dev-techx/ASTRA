@@ -1,6 +1,10 @@
+import AstraDashboard from "./components/astra/AstraDashboard";
 import { useEffect, useState } from "react";
 import {
   Activity,
+  Bookmark,
+  Info,
+  Users,
   Bell,
   Bot,
   CloudRain,
@@ -43,6 +47,8 @@ import WeatherCard from "./components/WeatherCard";
 import RiskCard from "./components/RiskCard";
 import AlertCard from "./components/AlertCard";
 import EmergencyMode from "./components/EmergencyMode";
+import TeamRiding from "./pages/TeamRiding";
+import ExploreNearby from "./pages/ExploreNearby";
 
 const locations = {
   Ghaziabad: [28.6692, 77.4538],
@@ -67,11 +73,15 @@ const locations = {
 const navItems = [
   { label: "Dashboard", path: "/", icon: Activity },
   { label: "Route Planner", path: "/route-planner", icon: Route },
+  { label: "Team Riding", path: "/team-riding", icon: Users },
+  { label: "Explore Nearby", path: "/explore-nearby", icon: MapPin },
   { label: "Weather", path: "/weather", icon: CloudRain },
   { label: "Risk Map", path: "/risk-map", icon: Map },
   { label: "Alerts", path: "/alerts", icon: Bell },
   { label: "Emergency", path: "/emergency", icon: ShieldAlert },
   { label: "AI Assistant", path: "/assistant", icon: Bot },
+  { label: "Saved Trips", path: "/saved-trips", icon: Bookmark },
+  { label: "About ASTRA", path: "/about", icon: Info },
   { label: "Developers", path: "/developers", icon: Sparkles },
 ];
 
@@ -80,11 +90,20 @@ function useAstraData() {
   const [coordinates, setCoordinates] = useState(locations.Ghaziabad);
   const [weatherData, setWeatherData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+  const [refreshKey, setRefreshKey] = useState(0);
   const [isLiveLocation, setIsLiveLocation] = useState(false);
-  const [locationStatus, setLocationStatus] = useState("Detecting location...");
+  const [locationStatus, setLocationStatus] = useState(
+    "Detecting location..."
+  );
+
+  const refreshWeather = () => {
+    setRefreshKey((value) => value + 1);
+  };
 
   const setLocation = (city) => {
     const nextCoordinates = locations[city];
+
     if (!nextCoordinates) return;
 
     setLocationState(city);
@@ -93,7 +112,7 @@ function useAstraData() {
     setLocationStatus("Manual location");
   };
 
-  const useLiveLocation = () => {
+  const requestLiveLocation = () => {
     if (!navigator.geolocation) {
       setLocationStatus("GPS unavailable");
       return;
@@ -113,13 +132,15 @@ function useAstraData() {
         setIsLiveLocation(true);
         setLocationStatus("GPS location active");
       },
-      (error) => {
-        console.warn("ASTRA location:", error.message);
+      (locationError) => {
+        console.warn("ASTRA location:", locationError.message);
+
         setLocationStatus(
-          error.code === 1
+          locationError.code === 1
             ? "Location permission denied"
             : "Unable to detect location"
         );
+
         setIsLiveLocation(false);
       },
       {
@@ -131,7 +152,7 @@ function useAstraData() {
   };
 
   useEffect(() => {
-    useLiveLocation();
+    requestLiveLocation();
   }, []);
 
   useEffect(() => {
@@ -140,172 +161,273 @@ function useAstraData() {
     async function load() {
       try {
         setLoading(true);
+        setError("");
+
         const [latitude, longitude] = coordinates;
-        const data = await getWeatherByCoordinates(latitude, longitude);
-        if (!cancelled) setWeatherData(data);
-      } catch (error) {
-        console.error("ASTRA API:", error);
+        const result = await getWeatherByCoordinates(
+          latitude,
+          longitude
+        );
+
+        if (!cancelled) {
+          setWeatherData(result);
+          setError("");
+        }
+      } catch (requestError) {
+        if (!cancelled) {
+          setError(
+            requestError?.message ||
+              "Weather data is temporarily unavailable."
+          );
+        }
       } finally {
         if (!cancelled) setLoading(false);
       }
     }
 
     load();
+
     return () => {
       cancelled = true;
     };
-  }, [coordinates]);
+  }, [coordinates, refreshKey]);
 
   return {
     location,
     setLocation,
-    useLiveLocation,
+    requestLiveLocation,
     locationStatus,
     isLiveLocation,
     weather: weatherData?.weather || null,
     risk: weatherData?.risk || null,
     coordinates,
     loading,
+    error,
+    refreshWeather,
   };
 }
 
 function AppShell({ children, data }) {
-  const [mobileOpen, setMobileOpen] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
   const { pathname } = useLocation();
 
+  const locationControls = data ? (
+    <div className="space-y-3 border-t border-white/10 pt-4">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-slate-500">
+        Location settings
+      </p>
+
+      <label className="block">
+        <span className="mb-2 block text-xs text-slate-400">
+          Selected location
+        </span>
+        <select
+          value={data.location}
+          onChange={(event) => data.setLocation(event.target.value)}
+          className="w-full rounded-xl border border-white/10 bg-[#081329]/90 px-3 py-2.5 text-sm text-slate-200 outline-none focus:border-cyan-300/40"
+        >
+          {data.isLiveLocation && (
+            <option value="Live Location">Live Location</option>
+          )}
+          {Object.keys(locations).map((city) => (
+            <option key={city} value={city}>{city}</option>
+          ))}
+        </select>
+      </label>
+
+      <button
+        type="button"
+        onClick={() => data.requestLiveLocation()}
+        className={`flex w-full items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs font-semibold transition ${
+          data.isLiveLocation
+            ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100"
+            : "border-cyan-400/20 bg-cyan-400/[0.06] text-cyan-200 hover:bg-cyan-400/10"
+        }`}
+      >
+        <LocateFixed size={15} />
+        {data.isLiveLocation ? "GPS location active" : "Use live location"}
+      </button>
+
+      <p className="text-[11px] leading-5 text-slate-500" role="status">
+        {data.locationStatus}
+      </p>
+    </div>
+  ) : null;
+
   return (
-    <div className="min-h-screen overflow-x-hidden bg-[#03040b] text-white">
-      <header className="sticky top-0 z-50 border-b border-white/5 bg-[#03040b]/90 px-3 py-3 pt-[max(0.75rem,env(safe-area-inset-top))] backdrop-blur-2xl sm:px-6">
-        <div className="mx-auto grid max-w-[1800px] grid-cols-[auto_1fr_auto] items-center gap-2 sm:gap-3">
-          <Link to="/" className="flex min-w-0 items-center gap-3 justify-self-start">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-violet-400/30 bg-violet-500/15">
-              <Globe2 size={21} className="text-violet-200" />
-            </div>
-            <div className="hidden min-[420px]:block">
-              <p className="font-bold tracking-[0.2em]">ASTRA</p>
-              <p className="text-[8px] uppercase tracking-[0.25em] text-slate-500">
-                Climate Risk Intelligence
-              </p>
-            </div>
+    <div className="relative min-h-screen min-w-0 overflow-x-clip text-white">
+      {/* Floating glass header */}
+      <header className="fixed inset-x-0 top-0 z-50 px-3 pt-[max(0.75rem,env(safe-area-inset-top))] sm:px-5 sm:pt-4">
+        <div className="relative mx-auto flex max-w-[1600px] items-center justify-between gap-3">
+          {/* Sidebar toggle: top-left */}
+          <button
+            type="button"
+            onClick={() => setMenuOpen((open) => !open)}
+            aria-label={menuOpen ? "Close navigation menu" : "Open navigation menu"}
+            aria-expanded={menuOpen}
+            aria-controls="astra-navigation-drawer"
+            className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-[#99cdd8]/20 bg-[#081329]/80 text-white shadow-lg backdrop-blur-3xl transition hover:border-cyan-300/40 hover:bg-white/10 focus:outline-none focus:ring-2 focus:ring-cyan-300/40"
+          >
+            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+          </button>
+
+          {/* Brand */}
+          <Link
+            to="/"
+            className="flex shrink-0 items-center gap-2 rounded-2xl border border-white/10 bg-[#081329]/75 p-2.5 shadow-lg backdrop-blur-3xl sm:px-3"
+          >
+            <span className="flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-300/25 bg-cyan-300/10">
+              <Globe2 size={21} className="text-cyan-100" />
+            </span>
+            <span className="hidden sm:block">
+              <span className="block text-sm font-bold tracking-[0.2em]">ASTRA</span>
+              <span className="block text-[9px] uppercase tracking-wider text-slate-400">
+                Climate Intelligence
+              </span>
+            </span>
           </Link>
 
-          <nav className="hidden items-center justify-center gap-0.5 rounded-2xl border border-white/10 bg-white/[0.025] p-1 shadow-[0_0_30px_rgba(34,211,238,0.04)] lg:flex">
-            {navItems.map((item) => {
-              const Icon = item.icon;
+          {/* Centered cylindrical navigation pill */}
+          <nav
+            aria-label="Quick navigation"
+            className="absolute left-1/2 top-0 hidden max-w-[calc(100%-300px)] -translate-x-1/2 items-center gap-1 overflow-x-auto whitespace-nowrap rounded-full border border-[#99cdd8]/20 bg-[#081329]/75 p-1.5 shadow-[0_8px_40px_rgba(0,0,0,0.25)] backdrop-blur-3xl md:flex"
+          >
+            {[
+              { label: "Dashboard", path: "/" },
+              { label: "Plan Trip", path: "/route-planner" },
+              { label: "Team Riding", path: "/team-riding" },
+              { label: "Explore", path: "/explore-nearby" },
+            ].map((item) => {
               const active = pathname === item.path;
+
               return (
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-1.5 rounded-xl px-2.5 py-2 text-[11px] whitespace-nowrap transition-all ${
+                  aria-current={active ? "page" : undefined}
+                  className={`rounded-full px-4 py-2 text-xs font-medium transition sm:text-sm ${
                     active
-                      ? "border border-violet-400/20 bg-violet-500/20 text-white shadow-[0_0_18px_rgba(139,92,246,0.14)]"
-                      : "border border-transparent text-slate-400 hover:bg-white/5 hover:text-white"
+                      ? "border border-cyan-300/25 bg-cyan-300/15 text-white shadow-[0_0_20px_rgba(153,205,216,0.14)]"
+                      : "text-slate-300 hover:bg-white/10 hover:text-white"
                   }`}
                 >
-                  <Icon size={13} />
                   {item.label}
                 </Link>
               );
             })}
           </nav>
 
-          <div className="flex items-center gap-2 justify-self-end">
-            <div className="hidden rounded-xl border border-emerald-400/20 bg-emerald-400/[0.04] px-3 py-2 xl:block">
-              <p className="text-[9px] font-semibold text-emerald-300">● LIVE</p>
-              <p className="text-[8px] text-slate-500">Real-time data</p>
-            </div>
-
+          {/* Top-right location and GPS controls */}
+          <div className="flex shrink-0 items-center gap-2">
             {data && (
               <>
+                <div className="hidden max-w-36 items-center gap-1.5 rounded-full border border-[#99cdd8]/20 bg-[#081329]/75 px-3 py-2 text-xs text-slate-200 shadow-lg backdrop-blur-3xl lg:flex">
+                  <MapPin size={14} className="shrink-0 text-cyan-200" />
+                  <span className="truncate">
+                    {data.isLiveLocation ? "Live location" : data.location}
+                  </span>
+                </div>
+
                 <button
                   type="button"
-                  onClick={data.useLiveLocation}
+                  onClick={() => data.requestLiveLocation()}
                   title={data.locationStatus}
-                  className={`hidden items-center gap-2 rounded-xl border px-3 py-2.5 text-[10px] font-semibold transition sm:flex ${
+                  className={`flex items-center gap-2 rounded-full border px-3 py-2.5 text-xs font-semibold shadow-lg backdrop-blur-3xl transition ${
                     data.isLiveLocation
-                      ? "border-emerald-400/30 bg-emerald-400/10 text-emerald-300 shadow-[0_0_18px_rgba(16,185,129,0.08)]"
-                      : "border-cyan-400/20 bg-cyan-400/[0.05] text-cyan-300 hover:bg-cyan-400/10"
+                      ? "border-cyan-300/30 bg-cyan-300/10 text-cyan-100"
+                      : "border-[#99cdd8]/20 bg-[#081329]/75 text-slate-200 hover:border-cyan-300/30 hover:text-cyan-200"
                   }`}
                 >
-                  <LocateFixed size={14} />
-                  {data.isLiveLocation ? "LIVE GPS" : "USE LIVE"}
-                </button>
-
-                <div className="relative hidden sm:block">
-                  <select
-                    value={data.location}
-                    onChange={(e) => data.setLocation(e.target.value)}
-                    className="appearance-none rounded-xl border border-white/10 bg-white/[0.03] py-2.5 pl-9 pr-8 text-xs outline-none"
-                  >
-                    {data.isLiveLocation && (
-                      <option value="Live Location" className="bg-slate-950">
-                        Live Location
-                      </option>
-                    )}
-                    {Object.keys(locations).map((city) => (
-                      <option key={city} value={city} className="bg-slate-950">
-                        {city}
-                      </option>
-                    ))}
-                  </select>
-                  <MapPin
-                    size={14}
-                    className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-cyan-300"
+                  <LocateFixed size={16} />
+                  <span className="hidden xl:inline">
+                    {data.isLiveLocation ? "GPS Active" : "Live GPS"}
+                  </span>
+                  <span
+                    className={`h-1.5 w-1.5 rounded-full ${
+                      data.isLiveLocation ? "bg-cyan-200" : "bg-slate-500"
+                    }`}
                   />
-                </div>
+                </button>
               </>
             )}
-
-            <button
-              onClick={() => setMobileOpen((v) => !v)}
-              className="flex h-11 w-11 items-center justify-center rounded-xl border border-white/10 bg-white/[0.03] lg:hidden"
-            >
-              {mobileOpen ? <X size={18} /> : <Menu size={18} />}
-            </button>
           </div>
         </div>
-
-        {mobileOpen && (
-          <nav className="mx-auto mt-3 grid max-h-[calc(100vh-90px)] max-w-[1700px] gap-1 overflow-y-auto rounded-2xl border border-white/10 bg-black/95 p-2 pb-[calc(0.5rem+env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
-            {data && (
-              <button
-                type="button"
-                onClick={() => {
-                  data.useLiveLocation();
-                  setMobileOpen(false);
-                }}
-                className="mb-1 flex items-center gap-3 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.05] px-4 py-3 text-sm text-cyan-300"
-              >
-                <LocateFixed size={17} />
-                {data.isLiveLocation ? "Live GPS Active" : "Use My Live Location"}
-              </button>
-            )}
-
-            {navItems.map((item) => {
-              const Icon = item.icon;
-              const active = pathname === item.path;
-              return (
-                <Link
-                  key={item.path}
-                  to={item.path}
-                  onClick={() => setMobileOpen(false)}
-                  className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm transition ${
-                    active
-                      ? "bg-violet-500/20 text-white"
-                      : "text-slate-300 hover:bg-white/5"
-                  }`}
-                >
-                  <Icon size={17} />
-                  {item.label}
-                </Link>
-              );
-            })}
-          </nav>
-        )}
       </header>
 
-      {children}
+      {/* Backdrop */}
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close navigation backdrop"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 z-[60] bg-slate-950/60 backdrop-blur-sm"
+        />
+      )}
+
+      {/* Full glass navigation drawer */}
+      <aside
+        id="astra-navigation-drawer"
+        aria-label="All ASTRA navigation links"
+        aria-hidden={!menuOpen}
+        className={`fixed inset-y-0 left-0 z-[70] flex w-[min(320px,88vw)] flex-col border-r border-[#99cdd8]/20 bg-[#081329]/90 px-4 pb-[max(1rem,env(safe-area-inset-bottom))] pt-20 shadow-[20px_0_80px_rgba(0,0,0,0.45)] backdrop-blur-3xl transition-transform duration-300 ${
+          menuOpen ? "translate-x-0" : "-translate-x-full"
+        }`}
+      >
+        <div className="pointer-events-none absolute inset-0 bg-gradient-to-b from-blue-400/10 via-transparent to-cyan-500/[0.07]" />
+
+        <div className="relative mb-5 flex items-center justify-between border-b border-white/10 px-2 pb-4">
+          <div>
+            <p className="font-bold tracking-[0.2em]">ALL NAVIGATION</p>
+            <p className="mt-1 text-xs text-slate-400">Explore ASTRA</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMenuOpen(false)}
+            aria-label="Close navigation"
+            className="rounded-xl border border-white/10 p-2 text-slate-300 hover:bg-white/10"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        <nav className="relative min-h-0 flex-1 space-y-1 overflow-y-auto">
+          {navItems.map((item) => {
+            const Icon = item.icon;
+            const active = pathname === item.path;
+
+            return (
+              <Link
+                key={item.path}
+                to={item.path}
+                tabIndex={menuOpen ? 0 : -1}
+                aria-current={active ? "page" : undefined}
+                onClick={() => setMenuOpen(false)}
+                className={`group flex items-center gap-3 rounded-xl border px-3 py-3 text-sm transition ${
+                  active
+                    ? "border-cyan-300/25 bg-cyan-300/15 text-white"
+                    : "border-transparent text-slate-300 hover:border-white/10 hover:bg-white/[0.07] hover:text-white"
+                }`}
+              >
+                <Icon
+                  size={18}
+                  className={active ? "text-cyan-200" : "text-slate-400 group-hover:text-cyan-200"}
+                />
+                <span>{item.label}</span>
+                {active && <span className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-300" />}
+              </Link>
+            );
+          })}
+        </nav>
+
+        {locationControls && (
+          <div className="relative mt-4 shrink-0">{locationControls}</div>
+        )}
+      </aside>
+
+      {/* Full-width page content */}
+      <main className="min-w-0 overflow-x-clip">
+        {children}
+      </main>
     </div>
   );
 }
@@ -313,7 +435,7 @@ function AppShell({ children, data }) {
 function PageHero({ eyebrow, title, subtitle, icon: Icon, children }) {
   return (
     <section className="relative overflow-hidden border-b border-white/5 px-5 py-14 sm:px-8 lg:px-12">
-      <div className="pointer-events-none absolute left-1/3 top-0 h-80 w-80 rounded-full bg-violet-600/10 blur-[120px]" />
+      <div className="pointer-events-none absolute left-1/3 top-0 h-80 w-80 rounded-full bg-sky-600/10 blur-[120px]" />
       <div className="relative mx-auto max-w-[1700px]">
         <div className="flex flex-col justify-between gap-8 lg:flex-row lg:items-end">
           <div className="max-w-3xl">
@@ -355,7 +477,7 @@ function AboutUs() {
   return (
     <section className="relative overflow-hidden border-t border-white/10 bg-[#030611] px-6 py-24">
       <div className="pointer-events-none absolute left-1/2 top-0 h-80 w-80 -translate-x-1/2 rounded-full bg-cyan-500/10 blur-[120px]" />
-      <div className="pointer-events-none absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-violet-500/10 blur-[120px]" />
+      <div className="pointer-events-none absolute bottom-0 left-1/4 h-72 w-72 rounded-full bg-sky-500/10 blur-[120px]" />
       <div className="relative mx-auto max-w-6xl">
         <div className="mx-auto max-w-3xl text-center">
           <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/20 bg-cyan-400/5 px-4 py-2 text-xs font-medium uppercase tracking-[0.25em] text-cyan-300">
@@ -363,7 +485,7 @@ function AboutUs() {
             About ASTRA
           </div>
           <h2 className="text-4xl font-bold tracking-tight text-white md:text-5xl">
-            Built for a <span className="bg-gradient-to-r from-cyan-300 to-violet-400 bg-clip-text text-transparent">safer tomorrow.</span>
+            Built for a <span className="bg-gradient-to-r from-cyan-300 to-sky-400 bg-clip-text text-transparent">safer tomorrow.</span>
           </h2>
           <p className="mt-6 text-base leading-8 text-slate-400 md:text-lg">
             ASTRA is an AI-powered extreme weather and disaster awareness platform designed to turn real-time environmental data into meaningful risk awareness and actionable guidance.
@@ -399,7 +521,7 @@ function AboutUs() {
             </div>
           </div>
         </div>
-        <div className="mt-6 rounded-3xl border border-cyan-400/20 bg-gradient-to-r from-cyan-400/[0.07] to-violet-500/[0.07] p-8 text-center backdrop-blur-xl">
+        <div className="mt-6 rounded-3xl border border-cyan-400/20 bg-gradient-to-r from-cyan-400/[0.07] to-sky-500/[0.07] p-8 text-center backdrop-blur-xl">
           <p className="text-xs uppercase tracking-[0.3em] text-slate-500">Achievement</p>
           <h3 className="mt-3 text-2xl font-bold text-white">🏆 First Position — NEXXATHON 2026</h3>
           <p className="mt-3 text-sm text-slate-400">
@@ -425,7 +547,7 @@ function Dashboard() {
           muted
           playsInline
           preload="metadata"
-          className="absolute inset-0 h-full w-full object-cover"
+          className="absolute inset-0 h-full w-full object-cover mix-blend-screen"
         />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_center,transparent_20%,rgba(2,3,10,.35)_55%,rgba(2,3,10,.94)_100%)]" />
         <div className="pointer-events-none absolute inset-0 bg-gradient-to-r from-[#02030a]/95 via-transparent to-[#02030a]/80" />
@@ -465,12 +587,12 @@ function Dashboard() {
             <Metric icon={Thermometer} label="Temperature" value={weather ? `${weather.temperature}°C` : "--"} />
             <Metric icon={Droplets} label="Rain Probability" value={weather ? `${weather.rainProbability}%` : "--"} />
             <Metric icon={Wind} label="Wind Speed" value={weather ? `${weather.windSpeed} km/h` : "--"} />
-            <Metric icon={ShieldAlert} label="Risk Score" value={risk ? `${risk.score}/100` : "--"} color="text-emerald-300" />
+            <Metric icon={ShieldAlert} label="Risk Score" value={risk ? `${risk.score}/100` : "--"} color="text-cyan-300" />
           </aside>
         </main>
 
         <div className="absolute bottom-7 left-7 right-7 z-20 flex justify-between">
-          <div className="rounded-2xl border border-violet-400/20 bg-black/30 px-5 py-4 backdrop-blur-xl">
+          <div className="rounded-2xl border border-sky-400/20 bg-black/30 px-5 py-4 backdrop-blur-xl">
             <p className="text-xs font-semibold">Live Global Monitoring</p>
             <p className="mt-1 text-[10px] text-slate-500">
               Weather · Risk · Real-time Insights
@@ -484,6 +606,10 @@ function Dashboard() {
           </div>
         </div>
       </div>
+
+      <section id="astra-dashboard">
+        <AstraDashboard />
+      </section>
 
       <AboutUs />
     </AppShell>
@@ -501,6 +627,60 @@ function RoutePlanner() {
   const [routeError, setRouteError] = useState("");
   const [destinationData, setDestinationData] = useState(null);
   const [destinationLoading, setDestinationLoading] = useState(false);
+  const [savedTrips, setSavedTrips] = useState(() => {
+    try {
+      return JSON.parse(
+        window.localStorage.getItem("astra-saved-trips") || "[]"
+      );
+    } catch {
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(
+        "astra-saved-trips",
+        JSON.stringify(savedTrips)
+      );
+    } catch (error) {
+      console.warn("Unable to save ASTRA trips locally:", error);
+    }
+  }, [savedTrips]);
+
+  const saveCurrentTrip = () => {
+    if (!route) return;
+
+    const trip = {
+      id: `${Date.now()}-${destination}`,
+      origin: data.location,
+      destination,
+      distanceKm: route.distanceKm,
+      durationMinutes: route.durationMinutes,
+      savedAt: new Date().toISOString(),
+      steps: (route.steps || []).map((step) => ({
+        name: step.name || "",
+        distance: step.distance || 0,
+        type: step.maneuver?.type || "continue",
+        modifier: step.maneuver?.modifier || "",
+      })),
+    };
+
+    setSavedTrips((previous) => [
+      trip,
+      ...previous.filter(
+        (item) =>
+          item.origin !== trip.origin ||
+          item.destination !== trip.destination
+      ),
+    ]);
+  };
+
+  const removeSavedTrip = (id) => {
+    setSavedTrips((previous) =>
+      previous.filter((trip) => trip.id !== id)
+    );
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -563,11 +743,11 @@ function RoutePlanner() {
     <AppShell data={data}>
       <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
         <div className="pointer-events-none absolute -left-32 top-20 h-96 w-96 rounded-full bg-cyan-500/10 blur-[130px]" />
-        <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-violet-600/10 blur-[130px]" />
+        <div className="pointer-events-none absolute right-0 top-0 h-96 w-96 rounded-full bg-sky-600/10 blur-[130px]" />
 
         <main className="relative mx-auto max-w-[1700px] px-5 py-10 sm:px-8 lg:px-12">
           <div className="grid min-h-[760px] gap-6 lg:grid-cols-[430px_1fr]">
-            <section className="flex flex-col justify-between rounded-[36px] border border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.07] via-transparent to-violet-500/[0.04] p-7 sm:p-9">
+            <section className="flex flex-col justify-between rounded-[36px] border border-cyan-400/15 bg-gradient-to-b from-cyan-400/[0.07] via-transparent to-sky-500/[0.04] p-7 sm:p-9">
               <div>
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-cyan-300/20 bg-cyan-300/10">
                   <Route className="text-cyan-300" size={25} />
@@ -625,7 +805,7 @@ function RoutePlanner() {
                   <button
                     onClick={analyseRoute}
                     disabled={routeLoading}
-                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-violet-500 px-5 py-3 text-sm font-bold transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
+                    className="mt-5 flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-cyan-500 to-sky-500 px-5 py-3 text-sm font-bold transition hover:scale-[1.01] disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {routeLoading ? (
                       "Calculating route..."
@@ -643,8 +823,59 @@ function RoutePlanner() {
                   </div>
                 )}
 
+                {savedTrips.length > 0 && (
+                  <div className="mt-5 rounded-2xl border border-white/10 bg-black/25 p-4">
+                    <div className="mb-3 flex items-center justify-between">
+                      <div>
+                        <p className="text-xs font-semibold">Saved journeys</p>
+                        <p className="mt-1 text-[10px] text-slate-500">
+                          Stored in this browser only
+                        </p>
+                      </div>
+                      <span className="rounded-full border border-cyan-400/20 px-2 py-1 text-xs text-cyan-300">
+                        {savedTrips.length}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {savedTrips.map((trip) => (
+                        <div
+                          key={trip.id}
+                          className="flex items-center justify-between gap-3 rounded-xl border border-white/[0.07] bg-white/[0.025] p-3"
+                        >
+                          <div className="min-w-0">
+                            <p className="truncate text-xs font-semibold">
+                              {trip.origin} → {trip.destination}
+                            </p>
+                            <p className="mt-1 text-[10px] text-slate-500">
+                              {trip.distanceKm.toFixed(1)} km ·{" "}
+                              {Math.round(trip.durationMinutes)} min
+                            </p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeSavedTrip(trip.id)}
+                            className="shrink-0 rounded-lg border border-red-400/20 px-3 py-2 text-[10px] text-red-300 transition hover:bg-red-400/10"
+                            aria-label={`Remove ${trip.destination} trip`}
+                          >
+                            Remove
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {route && (
                   <>
+                    <button
+                      type="button"
+                      onClick={saveCurrentTrip}
+                      className="mt-4 flex w-full items-center justify-center gap-2 rounded-xl border border-cyan-300/25 bg-cyan-300/[0.07] px-4 py-3 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-300/[0.13]"
+                    >
+                      Save this journey
+                    </button>
+
                     <div className="mt-4 grid grid-cols-2 gap-3">
                       <div className="rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4">
                         <p className="text-[9px] uppercase tracking-wider text-slate-500">
@@ -655,17 +886,22 @@ function RoutePlanner() {
                         </p>
                       </div>
 
-                      <div className="rounded-2xl border border-violet-400/15 bg-violet-400/[0.04] p-4">
+                      <div className="rounded-2xl border border-sky-400/15 bg-sky-400/[0.04] p-4">
                         <p className="text-[9px] uppercase tracking-wider text-slate-500">
                           ETA
                         </p>
-                        <p className="mt-2 text-2xl font-bold text-violet-300">
+                        <p className="mt-2 text-2xl font-bold text-sky-300">
                           {Math.round(route.durationMinutes)} min
                         </p>
                       </div>
                     </div>
 
-                    <div className="mt-4 rounded-2xl border border-emerald-400/15 bg-emerald-400/[0.04] p-4">
+                    <p className="mt-3 text-xs leading-5 text-slate-400">
+                      Estimated driving time from the routing service. Live
+                      traffic and unexpected road delays may not be included.
+                    </p>
+
+                    <div className="mt-4 rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.04] p-4">
                       <div className="flex items-center justify-between">
                         <div>
                           <p className="text-[9px] uppercase tracking-wider text-slate-500">
@@ -675,19 +911,19 @@ function RoutePlanner() {
                             {destination} conditions
                           </p>
                         </div>
-                        <ShieldAlert size={17} className="text-emerald-300" />
+                        <ShieldAlert size={17} className="text-cyan-300" />
                       </div>
 
                       <div className="mt-4 grid grid-cols-2 gap-3">
                         <div>
                           <p className="text-[9px] text-slate-500">Origin risk</p>
-                          <p className="mt-1 text-sm font-bold text-emerald-300">
+                          <p className="mt-1 text-sm font-bold text-cyan-300">
                             {data.risk?.score ?? "--"}/100
                           </p>
                         </div>
                         <div>
                           <p className="text-[9px] text-slate-500">Destination risk</p>
-                          <p className="mt-1 text-sm font-bold text-emerald-300">
+                          <p className="mt-1 text-sm font-bold text-cyan-300">
                             {destinationLoading
                               ? "..."
                               : destinationData?.risk?.score ?? "--"}
@@ -701,6 +937,63 @@ function RoutePlanner() {
                         Weather risk shown here is environmental context, not
                         an official travel-safety certification.
                       </p>
+                    </div>
+
+                    <div className="mt-4 rounded-2xl border border-white/10 bg-black/25 p-4">
+                      <p className="text-xs font-semibold">
+                        Turn-by-turn overview
+                      </p>
+                      <p className="mt-1 text-[10px] text-slate-500">
+                        Route instructions provided by the routing service.
+                      </p>
+
+                      {route.steps?.length ? (
+                        <ol className="mt-4 max-h-64 space-y-3 overflow-y-auto pr-1">
+                          {route.steps.map((step, index) => {
+                            const type = (
+                              step.maneuver?.type || "continue"
+                            ).replaceAll("_", " ");
+                            const modifier = step.maneuver?.modifier
+                              ? ` ${step.maneuver.modifier}`
+                              : "";
+                            const road = step.name
+                              ? ` onto ${step.name}`
+                              : "";
+
+                            let instruction;
+                            if (type === "depart") {
+                              instruction = `Start your journey${road}`;
+                            } else if (type === "arrive") {
+                              instruction = "Arrive at your destination";
+                            } else {
+                              instruction = `${type}${modifier}${road}`;
+                            }
+
+                            return (
+                              <li
+                                key={`${index}-${step.name || type}`}
+                                className="flex gap-3"
+                              >
+                                <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border border-cyan-300/20 bg-cyan-300/[0.07] text-[10px] font-bold text-cyan-200">
+                                  {index + 1}
+                                </span>
+                                <div className="min-w-0 flex-1 pt-1">
+                                  <p className="text-xs leading-5 text-slate-200">
+                                    {instruction}
+                                  </p>
+                                  <p className="mt-1 text-[10px] text-slate-500">
+                                    {(step.distance / 1000).toFixed(2)} km
+                                  </p>
+                                </div>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      ) : (
+                        <p className="mt-4 text-xs text-slate-500">
+                          No turn-by-turn instructions are available for this route.
+                        </p>
+                      )}
                     </div>
                   </>
                 )}
@@ -730,7 +1023,7 @@ function RoutePlanner() {
                   icon={ShieldAlert}
                   label="Origin Risk"
                   value={data.risk ? `${data.risk.score}/100` : "--"}
-                  color="text-emerald-300"
+                  color="text-cyan-300"
                 />
                 <Metric
                   icon={CloudRain}
@@ -765,12 +1058,12 @@ function WeatherLoadingScreen() {
   return (
     <div className="relative flex min-h-[520px] items-center justify-center overflow-hidden rounded-[32px] border border-cyan-400/15 bg-[#040914] px-6 py-12">
       <div className="pointer-events-none absolute -left-24 top-0 h-72 w-72 rounded-full bg-cyan-500/10 blur-[110px]" />
-      <div className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-violet-600/10 blur-[110px]" />
+      <div className="pointer-events-none absolute -right-20 bottom-0 h-72 w-72 rounded-full bg-sky-600/10 blur-[110px]" />
 
       <div className="relative z-10 w-full max-w-xl text-center">
         <div className="relative mx-auto flex h-24 w-24 items-center justify-center">
           <div className="absolute inset-0 animate-ping rounded-full border border-cyan-300/20" />
-          <div className="absolute inset-2 animate-[spin_8s_linear_infinite] rounded-full border border-dashed border-violet-400/25" />
+          <div className="absolute inset-2 animate-[spin_8s_linear_infinite] rounded-full border border-dashed border-sky-400/25" />
           <div className="absolute inset-5 rounded-2xl border border-cyan-300/25 bg-cyan-400/10 shadow-[0_0_45px_rgba(34,211,238,.12)] backdrop-blur-xl" />
           <CloudRain size={27} className="relative z-10 animate-pulse text-cyan-300" />
         </div>
@@ -813,7 +1106,7 @@ function WeatherLoadingScreen() {
         </div>
 
         <div className="mx-auto mt-7 h-1 max-w-md overflow-hidden rounded-full bg-white/5">
-          <div className="h-full w-1/2 animate-[loadingbar_1.8s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-400 via-violet-400 to-cyan-400" />
+          <div className="h-full w-1/2 animate-[loadingbar_1.8s_ease-in-out_infinite] rounded-full bg-gradient-to-r from-cyan-400 via-sky-400 to-cyan-400" />
         </div>
 
         <div className="mt-5 flex items-center justify-center gap-2 text-[10px] text-slate-600">
@@ -853,42 +1146,123 @@ function WeatherPage() {
                 Atmospheric Intelligence
               </p>
             </div>
+
             <h1 className="mt-5 max-w-4xl text-4xl font-black sm:text-5xl lg:text-7xl">
               The atmosphere,
               <br />
               <span className="text-cyan-300">decoded live.</span>
             </h1>
+
             <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-400">
-              ASTRA transforms live environmental measurements into a clean
-              picture of what is happening around {data.location}.
+              ASTRA transforms environmental measurements into a clear picture
+              of conditions around {data.location}.
             </p>
+
+            <div className="mt-5 flex flex-wrap items-center gap-3">
+              <button
+                type="button"
+                onClick={data.refreshWeather}
+                disabled={data.loading}
+                className="rounded-xl border border-cyan-400/25 bg-cyan-400/10 px-4 py-2.5 text-sm font-semibold text-cyan-200 transition hover:bg-cyan-400/20 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {data.loading ? "Refreshing..." : "Refresh weather"}
+              </button>
+
+              <span className="text-xs text-slate-500">
+                {data.locationStatus}
+              </span>
+            </div>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-            <Metric icon={Thermometer} label="Temperature" value={weather ? `${weather.temperature}°C` : "--"} />
-            <Metric icon={Droplets} label="Humidity" value={weather ? `${weather.humidity}%` : "--"} />
-            <Metric icon={CloudRain} label="Rain Probability" value={weather ? `${weather.rainProbability}%` : "--"} />
-            <Metric icon={Wind} label="Wind Speed" value={weather ? `${weather.windSpeed} km/h` : "--"} />
+            <Metric
+              icon={Thermometer}
+              label="Temperature"
+              value={weather ? `${weather.temperature}°C` : "--"}
+            />
+            <Metric
+              icon={Droplets}
+              label="Humidity"
+              value={weather ? `${weather.humidity}%` : "--"}
+            />
+            <Metric
+              icon={CloudRain}
+              label="Rain Probability"
+              value={weather ? `${weather.rainProbability}%` : "--"}
+            />
+            <Metric
+              icon={Wind}
+              label="Wind Speed"
+              value={weather ? `${weather.windSpeed} km/h` : "--"}
+            />
           </div>
 
           <div className="mt-6 grid gap-6 lg:grid-cols-[1.35fr_0.65fr]">
             <div className="rounded-[32px] border border-white/10 bg-white/[0.025] p-5 sm:p-7">
-              {weather ? (
-                <WeatherCard weather={{ ...weather, location: data.location }} />
-              ) : (
+              {data.loading && !weather ? (
                 <WeatherLoadingScreen />
+              ) : weather ? (
+                <>
+                  {data.error && (
+                    <div
+                      role="status"
+                      className="mb-4 rounded-xl border border-amber-400/20 bg-amber-400/5 p-3 text-sm text-amber-200"
+                    >
+                      Latest refresh failed. Showing the last available weather
+                      data. {data.error}
+                    </div>
+                  )}
+
+                  <WeatherCard
+                    weather={{
+                      ...weather,
+                      location: data.location,
+                    }}
+                  />
+                </>
+              ) : (
+                <div className="rounded-2xl border border-amber-400/20 bg-amber-400/[0.05] p-6">
+                  <p className="font-semibold text-amber-200">
+                    Weather data unavailable
+                  </p>
+                  <p className="mt-2 text-sm text-slate-400">
+                    {data.error || "Waiting for environmental data."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={data.refreshWeather}
+                    disabled={data.loading}
+                    className="mt-4 rounded-xl bg-cyan-400/10 px-4 py-2 text-sm text-cyan-200 transition hover:bg-cyan-400/20 disabled:opacity-50"
+                  >
+                    Try again
+                  </button>
+                </div>
               )}
             </div>
+
             <div className="rounded-[32px] border border-cyan-400/15 bg-gradient-to-br from-cyan-400/[0.06] to-transparent p-6">
-              <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500">Environmental state</p>
-              <p className="mt-5 text-6xl font-black">{weather?.temperature ?? "--"}°</p>
-              <p className="mt-2 text-sm text-slate-400">{data.location}</p>
+              <p className="text-[10px] uppercase tracking-[0.3em] text-slate-500">
+                Environmental state
+              </p>
+
+              <p className="mt-5 text-6xl font-black">
+                {weather?.temperature ?? "--"}°
+              </p>
+
+              <p className="mt-2 text-sm text-slate-400">
+                {data.location}
+              </p>
+
               <div className="mt-10 border-t border-white/10 pt-5">
-                <p className="text-xs text-slate-500">Current risk assessment</p>
-                <p className="mt-2 text-3xl font-bold text-emerald-300">
+                <p className="text-xs text-slate-500">
+                  Current risk assessment
+                </p>
+                <p className="mt-2 text-3xl font-bold text-cyan-300">
                   {risk?.score ?? "--"} / 100
                 </p>
-                <p className="mt-1 text-xs text-emerald-300">{risk?.level || "LOADING"}</p>
+                <p className="mt-1 text-xs text-cyan-300">
+                  {risk?.level || "UNAVAILABLE"}
+                </p>
               </div>
             </div>
           </div>
@@ -897,9 +1271,6 @@ function WeatherPage() {
     </AppShell>
   );
 }
-
-
-
 function RiskMapPage() {
   const data = useAstraData();
   const score = data.risk?.score ?? 0;
@@ -910,11 +1281,11 @@ function RiskMapPage() {
         <main className="mx-auto max-w-[1700px] px-5 py-10 sm:px-8 lg:px-12">
           <div className="mb-7 flex flex-col justify-between gap-5 sm:flex-row sm:items-end">
             <div>
-              <p className="text-[10px] uppercase tracking-[0.4em] text-violet-300">Spatial Risk Intelligence</p>
+              <p className="text-[10px] uppercase tracking-[0.4em] text-sky-300">Spatial Risk Intelligence</p>
               <h1 className="mt-3 text-4xl font-black sm:text-5xl lg:text-7xl">
                 See the
                 <br />
-                <span className="text-violet-300">risk layer.</span>
+                <span className="text-sky-300">risk layer.</span>
               </h1>
               <p className="mt-4 max-w-xl text-sm leading-7 text-slate-400">
                 A live geographic view of the environmental risk currently
@@ -922,20 +1293,20 @@ function RiskMapPage() {
               </p>
             </div>
 
-            <div className="rounded-3xl border border-emerald-400/20 bg-emerald-400/[0.04] px-6 py-5">
+            <div className="rounded-3xl border border-cyan-400/20 bg-cyan-400/[0.04] px-6 py-5">
               <p className="text-[9px] uppercase tracking-widest text-slate-500">Current location</p>
               <div className="mt-2 flex items-end gap-3">
                 <span className="text-4xl font-black">{score}</span>
                 <span className="mb-1 text-xs text-slate-500">/ 100</span>
-                <span className="mb-1 text-xs font-bold text-emerald-300">{data.risk?.level || "LOW"}</span>
+                <span className="mb-1 text-xs font-bold text-cyan-300">{data.risk?.level || "LOW"}</span>
               </div>
             </div>
           </div>
 
-          <div className="relative overflow-hidden rounded-[36px] border border-violet-400/15 bg-[#070b17]">
+          <div className="relative overflow-hidden rounded-[36px] border border-sky-400/15 bg-[#070b17]">
             <div className="absolute left-5 top-5 z-10 rounded-2xl border border-white/10 bg-black/60 px-4 py-3 backdrop-blur-xl">
               <div className="flex items-center gap-2">
-                <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
+                <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
                 <p className="text-[10px] font-semibold">LIVE RISK MAP</p>
               </div>
               <p className="mt-1 text-[9px] text-slate-500">{data.location}</p>
@@ -954,7 +1325,7 @@ function RiskMapPage() {
                 icon={ShieldAlert}
                 label="Risk Score"
                 value={`${score}/100`}
-                color="text-emerald-300"
+                color="text-cyan-300"
               />
 
               <Metric
@@ -1004,7 +1375,7 @@ function AlertsPage() {
         title: "SYSTEM NORMAL",
         message: "No significant environmental risk is currently detected.",
         badge: "LOW RISK",
-        tone: "emerald",
+        tone: "cyan",
         icon: CheckCircle2,
       };
     }
@@ -1047,12 +1418,6 @@ function AlertsPage() {
       bg: "bg-cyan-400/[0.06]",
       text: "text-cyan-300",
       glow: "bg-cyan-500/10",
-    },
-    emerald: {
-      border: "border-emerald-400/20",
-      bg: "bg-emerald-400/[0.06]",
-      text: "text-emerald-300",
-      glow: "bg-emerald-500/10",
     },
     amber: {
       border: "border-amber-400/20",
@@ -1118,8 +1483,8 @@ function AlertsPage() {
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <span className="h-2 w-2 animate-pulse rounded-full bg-emerald-400" />
-                  <span className="rounded-full bg-emerald-400/10 px-3 py-1 text-[10px] font-semibold text-emerald-300">
+                  <span className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
+                  <span className="rounded-full bg-cyan-400/10 px-3 py-1 text-[10px] font-semibold text-cyan-300">
                     MONITORING
                   </span>
                 </div>
@@ -1216,8 +1581,8 @@ function AlertsPage() {
                       </div>
                     ))
                   ) : (
-                    <div className="flex items-center gap-3 rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.03] p-4">
-                      <CheckCircle2 size={17} className="text-emerald-300" />
+                    <div className="flex items-center gap-3 rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.03] p-4">
+                      <CheckCircle2 size={17} className="text-cyan-300" />
                       <p className="text-sm text-slate-300">
                         No significant risk factors detected by the current risk engine.
                       </p>
@@ -1383,7 +1748,7 @@ function EmergencyPage() {
               <p className="mt-2 text-xs leading-5 text-slate-500">{data.location}</p>
             </div>
             <div className="rounded-3xl border border-white/10 bg-white/[0.025] p-6">
-              <ShieldAlert className="text-emerald-300" size={20} />
+              <ShieldAlert className="text-cyan-300" size={20} />
               <h3 className="mt-5 font-semibold">Risk State</h3>
               <p className="mt-2 text-xs leading-5 text-slate-500">
                 {data.risk?.level || "Loading"}
@@ -1424,20 +1789,20 @@ function AssistantPage() {
   return (
     <AppShell data={data}>
       <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#05020f]">
-        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-violet-600/15 blur-[150px]" />
+        <div className="pointer-events-none absolute left-1/2 top-0 h-[600px] w-[600px] -translate-x-1/2 rounded-full bg-sky-600/15 blur-[150px]" />
 
         <main className="relative mx-auto max-w-[1200px] px-5 py-16 sm:px-8">
           <div className="mx-auto max-w-3xl text-center">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-violet-400/20 bg-violet-500/10">
-              <Bot size={30} className="text-violet-300" />
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-3xl border border-sky-400/20 bg-sky-500/10">
+              <Bot size={30} className="text-sky-300" />
             </div>
-            <p className="mt-7 text-[10px] uppercase tracking-[0.45em] text-violet-300">
+            <p className="mt-7 text-[10px] uppercase tracking-[0.45em] text-sky-300">
               ASTRA Intelligence
             </p>
             <h1 className="mt-4 text-4xl font-black sm:text-5xl lg:text-7xl">
               Ask the
               <br />
-              <span className="text-violet-300">environment.</span>
+              <span className="text-sky-300">environment.</span>
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-sm leading-7 text-slate-400">
               Ask ASTRA about the current conditions around {data.location}.
@@ -1445,13 +1810,13 @@ function AssistantPage() {
             </p>
           </div>
 
-          <section className="mx-auto mt-10 max-w-4xl rounded-[36px] border border-violet-400/20 bg-gradient-to-br from-violet-500/[0.08] to-transparent p-6 shadow-[0_0_100px_rgba(124,58,237,.08)] sm:p-8">
+          <section className="mx-auto mt-10 max-w-4xl rounded-[36px] border border-sky-400/20 bg-gradient-to-br from-sky-500/[0.08] to-transparent p-6 shadow-[0_0_100px_rgba(124,58,237,.08)] sm:p-8">
             <div className="flex items-center justify-between border-b border-white/10 pb-5">
               <div>
                 <p className="text-xs text-slate-500">Conversation context</p>
                 <p className="mt-1 font-semibold">{data.location} · Live conditions</p>
               </div>
-              <Sparkles className="text-violet-300" size={19} />
+              <Sparkles className="text-sky-300" size={19} />
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -1459,7 +1824,7 @@ function AssistantPage() {
                 <button
                   key={item}
                   onClick={() => setQuestion(item)}
-                  className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-slate-300 transition hover:border-violet-400/30 hover:bg-violet-400/10"
+                  className="rounded-full border border-white/10 bg-white/[0.03] px-4 py-2 text-xs text-slate-300 transition hover:border-sky-400/30 hover:bg-sky-400/10"
                 >
                   {item}
                 </button>
@@ -1476,20 +1841,20 @@ function AssistantPage() {
               />
               <button
                 onClick={ask}
-                className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-violet-500 to-indigo-500"
+                className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-r from-sky-500 to-cyan-500"
               >
                 <ArrowRight size={18} />
               </button>
             </div>
 
             {answer ? (
-              <div className="mt-5 rounded-2xl border border-violet-400/20 bg-violet-400/[0.04] p-5">
+              <div className="mt-5 rounded-2xl border border-sky-400/20 bg-sky-400/[0.04] p-5">
                 <div className="flex gap-3">
-                  <div className="rounded-xl bg-violet-500/10 p-2">
-                    <Bot size={17} className="text-violet-300" />
+                  <div className="rounded-xl bg-sky-500/10 p-2">
+                    <Bot size={17} className="text-sky-300" />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-violet-300">ASTRA</p>
+                    <p className="text-xs font-semibold text-sky-300">ASTRA</p>
                     <p className="mt-2 text-sm leading-7 text-slate-300">{answer}</p>
                   </div>
                 </div>
@@ -1563,7 +1928,7 @@ function DevelopersPage() {
     <AppShell data={data}>
       <div className="relative min-h-[calc(100vh-73px)] overflow-hidden bg-[#030611]">
       <div className="pointer-events-none absolute left-1/4 top-0 h-96 w-96 rounded-full bg-cyan-500/10 blur-[140px]" />
-      <div className="pointer-events-none absolute right-0 top-1/4 h-96 w-96 rounded-full bg-violet-600/10 blur-[140px]" />
+      <div className="pointer-events-none absolute right-0 top-1/4 h-96 w-96 rounded-full bg-sky-600/10 blur-[140px]" />
 
       <main className="relative mx-auto max-w-[1500px] px-4 py-10 sm:px-8 lg:px-12 lg:py-16">
         <div className="mx-auto max-w-3xl text-center">
@@ -1574,7 +1939,7 @@ function DevelopersPage() {
 
           <h1 className="text-4xl font-black tracking-tight sm:text-6xl">
             Meet the{" "}
-            <span className="bg-gradient-to-r from-cyan-300 via-white to-violet-400 bg-clip-text text-transparent">
+            <span className="bg-gradient-to-r from-cyan-300 via-white to-sky-400 bg-clip-text text-transparent">
               Developers.
             </span>
           </h1>
@@ -1655,7 +2020,7 @@ function DevelopersPage() {
           ))}
         </div>
 
-        <div className="mt-8 rounded-[28px] border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.06] via-white/[0.02] to-violet-500/[0.06] p-7 text-center backdrop-blur-xl sm:p-9">
+        <div className="mt-8 rounded-[28px] border border-cyan-400/15 bg-gradient-to-r from-cyan-400/[0.06] via-white/[0.02] to-sky-500/[0.06] p-7 text-center backdrop-blur-xl sm:p-9">
           <p className="text-[9px] uppercase tracking-[0.35em] text-slate-500">
             Team Achievement
           </p>
@@ -1674,10 +2039,40 @@ function DevelopersPage() {
   );
 }
 
+function SavedTrips() {
+  return (
+    <main className="min-h-screen px-4 py-10 text-white sm:px-6 lg:px-10">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-8 flex items-center gap-3">
+          <div className="rounded-2xl border border-cyan-300/20 bg-cyan-300/10 p-3 text-cyan-200">
+            <Bookmark size={24} />
+          </div>
+          <div>
+            <p className="text-xs uppercase tracking-[0.22em] text-cyan-200">Your library</p>
+            <h1 className="mt-1 text-3xl font-bold sm:text-4xl">Saved Trips</h1>
+            <p className="mt-2 text-sm text-slate-400">Keep routes and destinations you want to revisit.</p>
+          </div>
+        </div>
+        <section className="glass rounded-3xl p-8 text-center sm:p-12">
+          <MapPin size={28} className="mx-auto text-slate-300" />
+          <h2 className="mt-5 text-xl font-semibold">No saved trips yet</h2>
+          <p className="mx-auto mt-2 max-w-lg text-sm leading-6 text-slate-400">
+            Saved-trip storage is not connected yet. Your saved routes and destinations will appear here when that functionality is available.
+          </p>
+          <Link to="/route-planner" className="mt-6 inline-flex items-center gap-2 rounded-xl bg-cyan-200 px-5 py-3 text-sm font-semibold text-slate-950 hover:bg-cyan-100">
+            Open Route Planner <ArrowRight size={16} />
+          </Link>
+          <p className="mt-4 text-xs text-amber-200/80">Saved Trips · Upcoming</p>
+        </section>
+      </div>
+    </main>
+  );
+}
+
 function MiniInfo({ icon: Icon, label, value }) {
   return (
     <div className="rounded-2xl border border-white/10 bg-black/20 p-4">
-      <Icon size={17} className="text-violet-300" />
+      <Icon size={17} className="text-sky-300" />
       <p className="mt-3 text-[10px] uppercase tracking-wider text-slate-500">{label}</p>
       <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
@@ -1690,11 +2085,15 @@ function App() {
       <Routes>
         <RouterRoute path="/" element={<Dashboard />} />
         <RouterRoute path="/route-planner" element={<RoutePlanner />} />
+        <RouterRoute path="/team-riding" element={<TeamRiding />} />
+          <RouterRoute path="/explore-nearby" element={<ExploreNearby />} />
         <RouterRoute path="/weather" element={<WeatherPage />} />
         <RouterRoute path="/risk-map" element={<RiskMapPage />} />
         <RouterRoute path="/alerts" element={<AlertsPage />} />
         <RouterRoute path="/emergency" element={<EmergencyPage />} />
         <RouterRoute path="/assistant" element={<AssistantPage />} />
+        <RouterRoute path="/saved-trips" element={<SavedTrips />} />
+        <RouterRoute path="/about" element={<AboutUs />} />
         <RouterRoute path="/developers" element={<DevelopersPage />} />
       </Routes>
     </BrowserRouter>

@@ -69,10 +69,10 @@ function EmergencyMode({ risk, location, onClose }) {
       label: "MODERATE RISK",
     },
     LOW: {
-      border: "border-emerald-500/30",
-      bg: "bg-emerald-500/10",
-      text: "text-emerald-400",
-      bar: "bg-emerald-500",
+      border: "border-cyan-400/30",
+      bg: "bg-cyan-400/10",
+      text: "text-cyan-300",
+      bar: "bg-cyan-400",
       label: "LOW RISK",
     },
     UNKNOWN: {
@@ -213,7 +213,23 @@ function EmergencyMode({ risk, location, onClose }) {
           </ol>
         </section>
 
-        <aside className="mt-6 rounded-xl border border-slate-800 bg-slate-900 p-4">
+        <aside className="mt-6 rounded-xl border border-red-500/30 bg-red-500/[0.08] p-4">
+          <p className="text-xs font-bold tracking-wider text-red-300">
+            SOS NOT SENT
+          </p>
+          <p className="mt-1 text-sm leading-6 text-slate-200">
+            Emergency Mode displays safety guidance only. It does not send an
+            SOS, share your location, or contact emergency services.
+          </p>
+          <a
+            href="tel:112"
+            className="mt-3 inline-flex rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-200 transition hover:bg-red-400/10"
+          >
+            Call India emergency helpline: 112
+          </a>
+        </aside>
+
+        <aside className="mt-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
           <p className="text-xs font-semibold tracking-wider text-slate-400">
             IMPORTANT
           </p>
@@ -237,3 +253,4 @@ function EmergencyMode({ risk, location, onClose }) {
 }
 
 export default EmergencyMode;
+
