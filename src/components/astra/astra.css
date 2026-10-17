@@ -1,0 +1,57 @@
+@import url('https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500;600&display=swap');
+
+.astra-root{
+  --bg:#102552; --bg2:#242e49; --ink:#F2F7FF; --sage:#A9BDD8; --mint:#99cdd8;
+  --low:#99cdd8; --mod:#fbbf24; --high:#fb923c; --ext:#ef4444;
+  font-family:'Jost','Futura','Avenir Next','Segoe UI',system-ui,sans-serif;
+  color:var(--ink); background:
+      radial-gradient(ellipse at 15% 15%, rgba(153,205,216,.16), transparent 38%),
+      radial-gradient(ellipse at 85% 30%, rgba(36,46,73,.8), transparent 42%),
+      linear-gradient(145deg, #102552 0%, #242e49 58%, #2b2d31 100%);
+}
+.astra-root .muted{ color:var(--sage); }
+
+.glass{
+  background:linear-gradient(145deg,rgba(36,46,73,.76),rgba(8,19,41,.78));
+  backdrop-filter:blur(24px) saturate(135%); -webkit-backdrop-filter:blur(24px) saturate(135%);
+  border:1px solid rgba(153,205,216,.16);
+  box-shadow:0 20px 50px -22px rgba(0,0,0,.65), inset 0 1px 0 rgba(255,255,255,.09);
+}
+.glass-shell{
+  background:linear-gradient(145deg,rgba(36,46,73,.94),rgba(16,37,82,.88));
+  backdrop-filter:blur(26px) saturate(1.2); -webkit-backdrop-filter:blur(26px) saturate(1.2);
+  border:1px solid rgba(153,205,216,.22);
+  box-shadow:0 40px 90px -30px rgba(0,0,0,.8), 0 0 32px rgba(16,37,82,.18), inset 0 1px 0 rgba(255,255,255,.10);
+}
+.glass-deep{
+  background:linear-gradient(145deg,rgba(36,46,73,.92),rgba(16,37,82,.86));
+  backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+  border:1px solid rgba(153,205,216,.14);
+  box-shadow:0 12px 35px -24px rgba(0,0,0,.8), inset 0 1px 0 rgba(255,255,255,.07);
+}
+.glass-hover{ transition:transform .25s ease, border-color .25s ease, background .25s ease, box-shadow .25s ease; }
+.glass-hover:hover{ transform:translateY(-2px); border-color:rgba(153,205,216,.42); box-shadow:0 24px 55px -25px rgba(0,0,0,.8), 0 0 22px rgba(153,205,216,.07), inset 0 1px 0 rgba(255,255,255,.10); }
+
+.pill{ transition:background .2s ease, color .2s ease, border-color .2s ease; color:var(--sage); }
+.pill:hover{ color:var(--ink); background:rgba(255,255,255,.07); }
+.pill[aria-current="true"],.pill[aria-pressed="true"]{ background:rgba(255,255,255,.17); color:var(--ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.15); }
+.icon-btn{ display:grid; place-items:center; border-radius:9999px; background:rgba(255,255,255,.10); border:1px solid rgba(255,255,255,.08); transition:background .2s ease, transform .15s ease; }
+.icon-btn:hover{ background:rgba(255,255,255,.18); }
+.icon-btn:active{ transform:scale(.94); }
+.astra-root :focus-visible{ outline:2px solid var(--mint); outline-offset:2px; }
+.astra-root ::selection{ background:rgba(153,205,216,.28); color:#fff; }
+
+.sup-unit{ font-size:.38em; vertical-align:top; margin-left:.12em; position:relative; top:.35em; color:var(--sage); font-weight:400; }
+.no-scrollbar{ scrollbar-width:none; } .no-scrollbar::-webkit-scrollbar{ display:none; }
+
+/* Dark-themed Leaflet using stock OSM tiles */
+.astra-map .leaflet-container{ background:#102552; font-family:inherit; }
+.astra-map .leaflet-tile-pane{ filter:invert(1) hue-rotate(160deg) brightness(.72) saturate(.45) contrast(.95); }
+.astra-map .leaflet-popup-content-wrapper,.astra-map .leaflet-popup-tip{ background:#242e49; color:#F4F7F4; border:1px solid rgba(255,255,255,.12); }
+.astra-map .leaflet-control-attribution{ background:rgba(7,16,41,.78); color:#A9BDD8; font-size:10px; }
+.astra-map .leaflet-control-attribution a{ color:#99cdd8; }
+.astra-map .leaflet-control-zoom a{ background:#242e49; color:#F4F7F4; border-color:rgba(255,255,255,.12); }
+
+@keyframes astra-up{ from{opacity:0; transform:translateY(10px)} to{opacity:1; transform:none} }
+.astra-in{ animation:astra-up .6s ease both; }
+@media (prefers-reduced-motion:reduce){ .astra-in{animation:none} .glass-hover,.pill,.icon-btn{transition:none} .glass-hover:hover{transform:none} }

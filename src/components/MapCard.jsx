@@ -273,13 +273,13 @@ function MapCard({
 
                         <div className="flex items-center gap-2">
 
-                            <span className="rounded-lg bg-violet-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-violet-300">
+                            <span className="rounded-lg bg-sky-500/10 px-2 py-1 text-[10px] font-semibold uppercase tracking-wider text-sky-300">
                                 Rider Intelligence
                             </span>
 
-                            <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50" />
+                            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/50" />
 
-                            <span className="text-[10px] text-emerald-400">
+                            <span className="text-[10px] text-cyan-400">
                                 LIVE
                             </span>
 
@@ -320,7 +320,7 @@ function MapCard({
                             <select
                                 value={selectedRoute.id}
                                 onChange={handleRouteChange}
-                                className="w-full rounded-xl border border-white/10 bg-[#121026] px-4 py-3 text-sm text-white outline-none transition focus:border-violet-500 lg:w-auto lg:min-w-[330px]"
+                                className="w-full rounded-xl border border-white/10 bg-[#081329] px-4 py-3 text-sm text-white outline-none transition focus:border-sky-500 lg:w-auto lg:min-w-[330px]"
                             >
 
                                 {routes.map((route) => (
@@ -354,13 +354,13 @@ function MapCard({
 
                             </div>
 
-                            <div className="rounded-xl border border-violet-500/10 bg-violet-500/5 p-4">
+                            <div className="rounded-xl border border-sky-500/10 bg-sky-500/5 p-4">
 
                                 <p className="text-[10px] uppercase tracking-wider text-slate-500">
                                     Estimated Riding Time
                                 </p>
 
-                                <p className="mt-2 text-xl font-bold text-violet-300">
+                                <p className="mt-2 text-xl font-bold text-sky-300">
                                     {selectedRoute.duration}
                                 </p>
 
@@ -395,7 +395,7 @@ function MapCard({
                                             className="flex items-center gap-2 rounded-lg border border-white/5 bg-white/5 px-3 py-2 text-xs text-slate-300"
                                         >
 
-                                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-violet-500/15 text-[9px] text-violet-300">
+                                            <span className="flex h-5 w-5 items-center justify-center rounded-full bg-sky-500/15 text-[9px] text-sky-300">
                                                 {index + 1}
                                             </span>
 
@@ -418,7 +418,7 @@ function MapCard({
                     <div className="flex flex-wrap gap-4">
 
                         <div className="flex items-center gap-2 text-xs text-slate-400">
-                            <span className="h-2.5 w-2.5 rounded-full bg-green-400" />
+                            <span className="h-2.5 w-2.5 rounded-full bg-cyan-400" />
                             Low
                         </div>
 
@@ -706,7 +706,7 @@ function MapCard({
                             📍 {selectedRoute.distance}
                         </span>
 
-                        <span className="rounded-lg bg-violet-500/10 px-3 py-2 text-xs font-medium text-violet-300">
+                        <span className="rounded-lg bg-sky-500/10 px-3 py-2 text-xs font-medium text-sky-300">
                             ⏱️ {selectedRoute.duration}
                         </span>
 
