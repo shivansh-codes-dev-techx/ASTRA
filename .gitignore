@@ -181,3 +181,4 @@ node_modules/
 *.palette-backup
 *.responsive-backup
 *.final-audit-backup
+.env.local
