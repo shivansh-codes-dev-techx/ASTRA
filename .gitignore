@@ -13,7 +13,7 @@ dist/
 downloads/
 eggs/
 .eggs/
-lib/
+/lib/
 lib64/
 parts/
 sdist/
@@ -182,3 +182,20 @@ node_modules/
 *.responsive-backup
 *.final-audit-backup
 .env.local
+
+# Local data, runtime caches, and generated build artifacts
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite-*
+backend/alert_sources/sachet_cache.json
+artifacts/
+*.tsbuildinfo
+
+# Local backup files and directories
+*.bak
+*.before-*
+*.backup-*
+backup-*/
+/auth-search-results.txt

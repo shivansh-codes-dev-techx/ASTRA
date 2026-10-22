@@ -199,7 +199,9 @@ input[aria-invalid=true]{border-color:#ff8f80}
     <p class="status" id="s-login" role="status" aria-live="polite"></p>
   </form>
   <div class="or">OR CONTINUE WITH</div>
-  <div class="soc"><button type="button" class="sbtn" data-soc="Google"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.4-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.8 0-5.2-1.9-6-4.5H2.4v2.800A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M6 14.100a6.600 6.600 0 0 1 0-4.200V7.100H2.400a11 11 0 0 0 0 9.800z"/><path fill="#EA4335" d="M12 5.400c1.600 0 3 .6 4.200 1.600l3.100-3.100A11 11 0 0 0 2.400 7.100L6 9.900c.8-2.600 3.200-4.500 6-4.500z"/></svg>Google</button><button type="button" class="sbtn" data-soc="Apple"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.4 12.700c0-2.400 2-3.500 2.100-3.600-1.100-1.700-2.900-1.900-3.500-1.900-1.500-.2-2.900.9-3.700.9s-1.900-.9-3.200-.8c-1.600 0-3.100.9-4 2.400-1.700 3-.4 7.400 1.200 9.800.8 1.200 1.800 2.500 3 2.400 1.200 0 1.700-.8 3.100-.8s1.800.8 3.100.8 2.100-1.200 2.900-2.400c.9-1.300 1.300-2.600 1.300-2.700 0 0-2.300-.9-2.300-3.600zM14 5.600c.7-.8 1.100-1.900 1-3-1 0-2.100.7-2.800 1.500-.6.700-1.200 1.800-1 2.900 1.100.1 2.100-.6 2.800-1.400z"/></svg>Apple</button></div>
+  <div class="soc one"><div id="google-login" class="google-control"></div><p class="status" id="s-google-login" role="status" aria-live="polite">Checking Google Sign-In availability…</p></div>
+  <button class="link resend-verification" type="button" id="resend-login" hidden>Resend verification email</button>
+  <button class="link verify-email-button" type="button" id="verify-email-button" hidden>Verify email address</button>
   <p class="swap">New to ASTRA? <button type="button" class="link" data-go="signup">Create an account</button></p>
 </section>
 
@@ -216,7 +218,8 @@ input[aria-invalid=true]{border-color:#ff8f80}
     <p class="status" id="s-signup" role="status" aria-live="polite"></p>
   </form>
   <div class="or">OR</div>
-  <div class="soc one"><button type="button" class="sbtn" data-soc="Google"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.5 12.2c0-.8-.1-1.5-.2-2.2H12v4.2h5.9a5 5 0 0 1-2.2 3.3v2.7h3.5c2.1-1.9 3.3-4.7 3.3-8z"/><path fill="#34A853" d="M12 23c3 0 5.4-1 7.2-2.7l-3.5-2.7c-1 .7-2.2 1-3.7 1-2.8 0-5.2-1.9-6-4.5H2.4v2.800A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M6 14.100a6.600 6.600 0 0 1 0-4.200V7.100H2.400a11 11 0 0 0 0 9.800z"/><path fill="#EA4335" d="M12 5.400c1.600 0 3 .6 4.200 1.600l3.100-3.100A11 11 0 0 0 2.400 7.100L6 9.900c.8-2.600 3.200-4.500 6-4.500z"/></svg>Sign up with Google</button></div>
+  <div class="soc one"><div id="google-signup" class="google-control"></div><p class="status" id="s-google-signup" role="status" aria-live="polite">Checking Google Sign-In availability…</p></div>
+  <button class="link resend-verification" type="button" id="resend-signup" hidden>Resend verification email</button>
   <p class="swap">Already riding with us? <button type="button" class="link" data-go="login">Log in</button></p>
 </section>
 </div>
@@ -246,6 +249,8 @@ input[aria-invalid=true]{border-color:#ff8f80}
 const $=(s,r=document)=>r.querySelector(s),$$=(s,r=document)=>[...r.querySelectorAll(s)];
 const card=$('#card'),pl=$('#p-login'),ps=$('#p-signup');
 const EMAIL=/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const verificationToken=new URLSearchParams(location.hash.slice(1)).get('verify-email')
+  ||new URLSearchParams(location.search).get('verify_email');
 const copies={login:$('.copy.l'),signup:$('.copy.s')};
 let mode='login';
 const vd=$('.vid');if(matchMedia('(prefers-reduced-motion: reduce)').matches)vd.pause();else vd.play&&vd.play().catch(()=>{});
@@ -275,6 +280,9 @@ const setErr=(id,msg)=>{
   msg?i.setAttribute('aria-invalid','true'):i.removeAttribute('aria-invalid');return !msg;
 };
 const status=(el,msg,kind)=>{el.textContent=msg;el.className='status'+(kind?' '+kind:'')};
+if(new URLSearchParams(location.search).get('signup')==='verification-pending'){
+  status($('#s-login'),'Account created. Check your email to verify your account before signing in.','ok');
+}
 const strength=p=>{let s=0;if(p.length>=8)s++;if(/[a-z]/.test(p)&&/[A-Z]/.test(p))s++;if(/\d/.test(p))s++;if(/[^A-Za-z0-9]/.test(p)||p.length>=12)s++;return s};
 
 const vEmail=id=>setErr(id,!$('#'+id).value.trim()?'Enter your email address.':!EMAIL.test($('#'+id).value.trim())?'Enter a valid email, like rider@example.com.':'');
@@ -289,8 +297,61 @@ const live={'l-email':()=>vEmail('l-email'),'l-pass':()=>setErr('l-pass',$('#l-p
 Object.entries(live).forEach(([id,fn])=>{const i=$('#'+id);i.addEventListener('blur',()=>{touched.add(id);fn()});i.addEventListener('input',()=>{if(touched.has(id))fn();if(id==='s-pass'){$('#strength').dataset.s=strength(i.value);if(touched.has('s-conf'))vConf()}})});
 $('#s-terms').addEventListener('change',()=>{if($('#s-terms-e').textContent)vTerms()});
 
-// API endpoint for local development. Configure this for your deployed backend.
-const API_BASE = 'http://localhost:8000';
+// The parent app supplies the API endpoint for local and deployed environments.
+let API_BASE = '';
+let resolveApiBaseReady;
+const apiBaseReady = new Promise(resolve => { resolveApiBaseReady = resolve; });
+setTimeout(() => resolveApiBaseReady(), 1200);
+window.addEventListener('message', (event) => {
+  const data = event.data;
+  if (event.origin !== window.location.origin ||
+      event.source !== window.parent ||
+      !data || data.type !== 'astra-api-base' ||
+      typeof data.baseUrl !== 'string') return;
+
+  const isRelativeApiBase = data.baseUrl.startsWith('/');
+  if (isRelativeApiBase && data.baseUrl.startsWith('//')) return;
+
+  const apiUrl = new URL(data.baseUrl, window.location.origin);
+  if ((apiUrl.protocol !== 'http:' && apiUrl.protocol !== 'https:') ||
+      apiUrl.username || apiUrl.password ||
+      apiUrl.search || apiUrl.hash ||
+      (isRelativeApiBase && apiUrl.origin !== window.location.origin) ||
+      (window.location.protocol === 'https:' && apiUrl.protocol !== 'https:')) return;
+
+  API_BASE = isRelativeApiBase
+    ? apiUrl.pathname.replace(/\/+$/, '')
+    : apiUrl.href.replace(/\/+$/, '');
+  resolveApiBaseReady();
+});
+
+async function apiRequest(path, options = {}) {
+  await apiBaseReady;
+  return fetch(`${API_BASE}${path}`, {
+    ...options,
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json', ...(options.headers || {}) }
+  });
+}
+
+async function establishSession(endpoint, payload, statusElement) {
+  const response = await apiRequest(`/auth/${endpoint}`, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  const data = await response.json().catch(() => ({}));
+  if (!response.ok) {
+    const error = new Error(data.detail || 'Sign-in failed. Please try again.');
+    error.verificationRequired = response.headers.get('X-ASTRA-Verification-Required') === 'true';
+    throw error;
+  }
+  const meResponse = await apiRequest('/auth/me', { method: 'GET' });
+  if (!meResponse.ok) {
+    throw new Error('Authentication succeeded, but the session could not be verified. Check API CORS and cookie settings.');
+  }
+  status(statusElement, data.message || 'Sign-in successful. Redirecting…', 'ok');
+  window.top.location.assign('/');
+}
 
 async function submitAuth(btn, el, label, endpoint, payload) {
   const originalText = btn.textContent;
@@ -299,34 +360,57 @@ async function submitAuth(btn, el, label, endpoint, payload) {
   status(el, '');
 
   try {
-    const response = await fetch(`${API_BASE}/auth/${endpoint}`, {
+    const response = await apiRequest(`/auth/${endpoint}`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
       body: JSON.stringify(payload)
     });
     const data = await response.json().catch(() => ({}));
 
     if (!response.ok) {
+      if (endpoint === 'signup' && response.headers.get('X-ASTRA-Verification-Pending') === 'true') {
+        $('#resend-signup').hidden = false;
+        status(el, data.detail || 'Your account is pending email verification, but delivery failed.', 'bad');
+        return;
+      }
+      if (endpoint === 'login' && response.headers.get('X-ASTRA-Verification-Required') === 'true') {
+        $('#resend-login').hidden = false;
+        throw Object.assign(new Error(data.detail), { verificationRequired: true });
+      }
       const detail = typeof data.detail === 'string'
         ? data.detail
         : 'Request failed. Please check your details and try again.';
       throw new Error(detail);
     }
 
-    // Confirm that the browser accepted and sends the session cookie.
-    const meResponse = await fetch(`${API_BASE}/auth/me`, {
-      method: 'GET',
-      credentials: 'include'
-    });
-    if (!meResponse.ok) {
-      throw new Error('Authentication succeeded, but the browser session could not be verified. Check CORS and cookie settings.');
+    if (endpoint === 'signup') {
+      if (data.verification_pending !== true) {
+        throw new Error('The signup API returned success without confirming verification email delivery. Check that ASTRA is connected to the current backend.');
+      }
+      const signupForm=$('#f-signup');
+      signupForm.reset();
+      for(const id of ['s-name','s-email','s-pass','s-conf']){
+        touched.delete(id);
+        setErr(id,'');
+      }
+      $('#strength').dataset.s='0';
+      window.top.location.assign('/login?signup=verification-pending#login');
+      return;
     }
 
+    const meResponse = await apiRequest('/auth/me', { method: 'GET' });
+    if (!meResponse.ok) {
+      throw new Error('Authentication succeeded, but the browser session could not be verified. Check API CORS and cookie settings.');
+    }
     status(el, data.message || 'Success. Redirecting to ASTRA…', 'ok');
+    try {
+      window.top.sessionStorage.setItem('astra_auth_action', endpoint);
+    } catch (_) {}
     window.top.location.assign('/');
   } catch (error) {
     let message = error instanceof Error ? error.message : 'Could not connect to ASTRA.';
+    if (error?.verificationRequired) {
+      message += ' Use “Resend verification email” if you need a new link.';
+    }
     if (error instanceof TypeError) {
       message = 'Could not reach the ASTRA API. Make sure FastAPI is running at ' + API_BASE + ' and CORS is configured.';
     }
@@ -352,6 +436,35 @@ $('#f-login').addEventListener('submit', e => {
   });
 });
 
+async function resendVerification(email, button, messageElement) {
+  if (!EMAIL.test(email.trim())) {
+    status(messageElement, 'Enter a valid email address first.', 'bad');
+    return;
+  }
+  const original = button.textContent;
+  button.disabled = true;
+  button.textContent = 'Requesting…';
+  try {
+    const response = await apiRequest('/auth/resend-verification', {
+      method: 'POST',
+      body: JSON.stringify({ email: email.trim() })
+    });
+    const result = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(result.detail || 'Could not request a verification email.');
+    status(messageElement, result.message);
+  } catch (error) {
+    status(messageElement, error instanceof Error ? error.message : 'Could not request a verification email.', 'bad');
+  } finally {
+    button.disabled = false;
+    button.textContent = original;
+  }
+}
+
+$('#resend-login').addEventListener('click', event =>
+  resendVerification($('#l-email').value, event.currentTarget, $('#s-login')));
+$('#resend-signup').addEventListener('click', event =>
+  resendVerification($('#s-email').value, event.currentTarget, $('#s-signup')));
+
 $('#f-signup').addEventListener('submit', e => {
   e.preventDefault();
   const results = [vName(), vEmail('s-email'), vPass(), vConf(), vTerms()];
@@ -361,10 +474,116 @@ $('#f-signup').addEventListener('submit', e => {
     return;
   }
   submitAuth($('.btn', e.target), $('#s-signup'), 'Creating account…', 'signup', {
+    name: $('#s-name').value.trim(),
     email: $('#s-email').value.trim(),
     password: $('#s-pass').value
   });
 });
+
+function googleCsrfToken() {
+  return document.cookie.split('; ').find(item => item.startsWith('g_csrf_token='))
+    ?.split('=').slice(1).join('=') || '';
+}
+
+async function handleGoogleCredential(credential) {
+  const messageElement = mode === 'signup' ? $('#s-google-signup') : $('#s-google-login');
+  try {
+    const response = await apiRequest('/auth/google', {
+      method: 'POST',
+      body: JSON.stringify({ credential, csrf_token: googleCsrfToken() })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) throw new Error(data.detail || 'Google sign-in could not be completed.');
+    const session = await apiRequest('/auth/me', { method: 'GET' });
+    if (!session.ok) throw new Error('Google sign-in succeeded, but the ASTRA session could not be verified.');
+    status(messageElement, 'Google sign-in successful. Redirecting…', 'ok');
+    window.top.location.assign('/');
+  } catch (error) {
+    status(messageElement, error instanceof Error ? error.message : 'Google sign-in could not be completed.', 'bad');
+  }
+}
+
+async function initializeGoogle() {
+  const loginStatus = $('#s-google-login');
+  const signupStatus = $('#s-google-signup');
+  try {
+    const response = await apiRequest('/auth/config', { method: 'GET' });
+    const config = await response.json();
+    if (!response.ok || !config.google_client_id) {
+      status(loginStatus, 'Google Sign-In is not configured for this deployment.');
+      status(signupStatus, 'Google Sign-In is not configured for this deployment.');
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      if (!window.google?.accounts?.id) {
+        status(loginStatus, 'Google Sign-In could not be loaded. Check your network and try again.', 'bad');
+        status(signupStatus, 'Google Sign-In could not be loaded. Check your network and try again.', 'bad');
+        return;
+      }
+      window.google.accounts.id.initialize({
+        client_id: config.google_client_id,
+        callback: result => {
+          if (result.credential) handleGoogleCredential(result.credential);
+          else status(mode === 'signup' ? signupStatus : loginStatus, 'Google did not return an identity credential.', 'bad');
+        }
+      });
+      for (const element of [$('#google-login'), $('#google-signup')]) {
+        window.google.accounts.id.renderButton(element, {
+          type: 'standard',
+          theme: 'outline',
+          size: 'large',
+          text: 'continue_with',
+          shape: 'rectangular',
+          width: Math.min(320, Math.max(220, element.clientWidth))
+        });
+      }
+      status(loginStatus, '');
+      status(signupStatus, '');
+    };
+    script.onerror = () => {
+      status(loginStatus, 'Google Sign-In could not be loaded. Check your network and try again.', 'bad');
+      status(signupStatus, 'Google Sign-In could not be loaded. Check your network and try again.', 'bad');
+    };
+    document.head.appendChild(script);
+  } catch {
+    status(loginStatus, 'Google Sign-In configuration could not be loaded.', 'bad');
+    status(signupStatus, 'Google Sign-In configuration could not be loaded.', 'bad');
+  }
+}
+
+if (verificationToken) {
+  $('#verify-email-button').hidden = false;
+  status($('#s-login'), 'Confirm your email verification below to continue.', '');
+  $('#verify-email-button').addEventListener('click', async event => {
+    const button = event.currentTarget;
+    button.disabled = true;
+    try {
+      const response = await apiRequest('/auth/verify-email', {
+        method: 'POST',
+        body: JSON.stringify({ token: verificationToken })
+      });
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.detail || 'This verification link is invalid or expired.');
+      status($('#s-login'), result.message, 'ok');
+      button.hidden = true;
+      const cleanUrl = new URL(window.top.location.href);
+      cleanUrl.searchParams.delete('verify_email');
+      cleanUrl.hash = '';
+      window.top.history.replaceState(null, '', cleanUrl);
+    } catch (error) {
+      status($('#s-login'), error instanceof Error ? error.message : 'Email verification failed.', 'bad');
+    } finally {
+      button.disabled = false;
+    }
+  });
+}
+
+initializeGoogle();
 
 $('#forgot').addEventListener('click', () => {
   const el = $('#s-login');

@@ -1,4 +1,4 @@
-
+﻿
 import AuthPage from "./pages/AuthPage";
 import { lazy, Suspense, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { Link, Route, Switch, useLocation, Router as WouterRouter } from "wouter";
@@ -17,7 +17,7 @@ import {
   describeWeather, fetchBackendRisk, fetchRoute, fetchWeather, formatDistance,
   formatDuration, getActiveRide, getSavedRides,
   fetchAccountRides, saveAccountRide, deleteAccountRide,
-  searchLocations, setActiveRide,
+  searchLocations, setActiveRide, fetchOfficialAlerts, ASTRA_API_URL, type OfficialAlert,
   type GeoResult, type Location, type RoutePlan, type SavedRide,
   type BackendRiskResponse, type WeatherSnapshot,
 } from "@/lib/astra";
@@ -28,7 +28,7 @@ const RouteMap = lazy(() =>
   import("@/components/RouteMap").then(({ RouteMap: MapView }) => ({ default: MapView })),
 );
 
-const AUTH_API_BASE = "http://localhost:8000";
+const AUTH_API_BASE = ASTRA_API_URL;
 const TEAM_API_BASE = AUTH_API_BASE;
 
 type TeamRide = {
@@ -72,7 +72,17 @@ function formatDeparture(value: string) {
 }
 
 
-type AuthUser = { id: number; email: string };
+type AuthUser = { id: number; email: string; name?: string | null };
+type Notification = {
+  id: number;
+  title: string;
+  message: string;
+  notification_type: string;
+  target_url: string;
+  related_ride_id: number | null;
+  is_read: number;
+  created_at: string;
+};
 type NavEntry = { path: string; label: string; icon: typeof Compass };
 const navItems: NavEntry[] = [
   { path: "/", label: "Dashboard", icon: Compass },
@@ -324,6 +334,11 @@ function RoutedErrorBoundary({ children }: { children: ReactNode }) {
 function Header() {
   const [path, setLocation] = useLocation();
   const [profileOpen, setProfileOpen] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<Notification[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [notificationsError, setNotificationsError] = useState("");
+  const [clearingNotifications, setClearingNotifications] = useState(false);
   const [authUser, setAuthUser] = useState<AuthUser | null>(null);
   const [authLoading, setAuthLoading] = useState(true);
   const [logoutError, setLogoutError] = useState("");
@@ -332,6 +347,40 @@ function Header() {
   const searchForm = useForm<{ search: string }>({ defaultValues: { search: "" } });
   const search = searchForm.watch("search");
   const matches = navItems.filter((item) => `${item.label} ${item.path}`.toLowerCase().includes(search.trim().toLowerCase()));
+    useEffect(() => {
+    if (!authUser) {
+      setNotifications([]);
+      setUnreadCount(0);
+      return;
+    }
+
+    const controller = new AbortController();
+
+    fetch(`${AUTH_API_BASE}/notifications`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) {
+          throw new Error("Could not load notifications.");
+        }
+        return response.json();
+      })
+      .then((data) => {
+        if (controller.signal.aborted) return;
+        setNotifications(data.notifications ?? []);
+        setUnreadCount(data.unread_count ?? 0);
+        setNotificationsError("");
+      })
+      .catch((error) => {
+        if (controller.signal.aborted) return;
+        setNotificationsError(
+          error instanceof Error ? error.message : "Could not load notifications.",
+        );
+      });
+
+    return () => controller.abort();
+  }, [authUser]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -366,8 +415,39 @@ function Header() {
     }
   }
 
-  const profileLabel = authUser?.email ? authUser.email.split("@")[0] : "Guest rider";
-  const profileInitials = authUser?.email ? authUser.email.slice(0, 2).toUpperCase() : "?";
+  async function clearNotifications() {
+    if (!notifications.length || clearingNotifications) return;
+    if (!window.confirm("Clear all notifications? This cannot be undone.")) return;
+
+    setClearingNotifications(true);
+    setNotificationsError("");
+    try {
+      const response = await fetch(`${AUTH_API_BASE}/notifications`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.detail || "Could not clear notifications.");
+      }
+      setNotifications([]);
+      setUnreadCount(0);
+    } catch (error) {
+      setNotificationsError(
+        error instanceof Error ? error.message : "Could not clear notifications.",
+      );
+    } finally {
+      setClearingNotifications(false);
+    }
+  }
+
+  const profileName = authUser?.name?.trim() || authUser?.email?.split("@")[0] || "Guest rider";
+  const profileLabel = authUser ? profileName.split(/\s+/)[0] : "Guest rider";
+  const profileInitials = authUser?.name?.trim()
+    ? authUser.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()
+    : authUser?.email
+      ? authUser.email.slice(0, 2).toUpperCase()
+      : "?";
 
   return (
     <header className="astra-header">
@@ -409,10 +489,84 @@ function Header() {
           <span className="header-location-icon"><MapPin size={19} fill="currentColor" /></span>
           <span className="header-location-copy"><strong>Ghaziabad, UP</strong><small>28.6692, 77.4538</small></span>
         </Link>
-        <Link href="/weather-alerts" className={`header-icon-button header-notification-button ${path === "/weather-alerts" ? "is-current" : ""}`} aria-label="View weather and alerts" data-testid="link-header-alerts">
-          <Bell size={19} />
-          <span className="header-notification-badge" aria-label="3 notifications">3</span>
-        </Link>
+<div className="header-notification-wrap">
+  <button
+    type="button"
+    className={`header-icon-button header-notification-button ${path === "/weather-alerts" ? "is-current" : ""}`}
+    aria-label={`Notifications${unreadCount ? `, ${unreadCount} unread` : ""}`}
+    aria-expanded={notificationsOpen}
+    data-testid="button-header-notifications"
+    onClick={() => setNotificationsOpen((open) => !open)}
+  >
+    <Bell size={19} />
+    {unreadCount > 0 && (
+      <span className="header-notification-badge" aria-label={`${unreadCount} unread notifications`}>
+        {unreadCount > 99 ? "99+" : unreadCount}
+      </span>
+    )}
+  </button>
+
+  {notificationsOpen && (
+    <div className="header-notification-popover" role="dialog" aria-label="Notifications">
+      <div className="header-notification-heading">
+        <strong>Notifications</strong>
+        <div className="header-notification-actions">
+          <span>{unreadCount} unread</span>
+          <button
+            type="button"
+            className="notification-clear-button"
+            onClick={() => void clearNotifications()}
+            disabled={notifications.length === 0 || clearingNotifications}
+          >
+            <Trash2 size={14} />
+            {clearingNotifications ? "Clearing..." : "Clear all"}
+          </button>
+        </div>
+      </div>
+
+      {notificationsError && <p role="alert">{notificationsError}</p>}
+
+      {!notificationsError && notifications.length === 0 && (
+        <p className="header-notification-empty">No notifications yet.</p>
+      )}
+
+      {notifications.map((notification) => (
+        <button
+          type="button"
+          key={notification.id}
+          className={`header-notification-item ${notification.is_read ? "" : "is-unread"}`}
+          onClick={async () => {
+            try {
+              if (!notification.is_read) {
+                const response = await fetch(
+                  `${AUTH_API_BASE}/notifications/${notification.id}/read`,
+                  { method: "POST", credentials: "include" },
+                );
+                if (!response.ok) throw new Error("Could not mark notification as read.");
+                setNotifications((items) =>
+                  items.map((item) =>
+                    item.id === notification.id ? { ...item, is_read: 1 } : item,
+                  ),
+                );
+                setUnreadCount((count) => Math.max(0, count - 1));
+              }
+              setNotificationsOpen(false);
+              setLocation(notification.target_url || "/weather-alerts");
+            } catch (error) {
+              setNotificationsError(
+                error instanceof Error ? error.message : "Could not open notification.",
+              );
+            }
+          }}
+        >
+          <strong>{notification.title}</strong>
+          <span>{notification.message}</span>
+          <small>{new Date(notification.created_at).toLocaleString()}</small>
+        </button>
+      ))}
+    </div>
+  )}
+</div>
         <div className="header-profile-wrap">
           {authUser ? (
             <>
@@ -423,7 +577,8 @@ function Header() {
               </button>
               {profileOpen && (
                 <div className="header-profile-popover" role="status">
-                  <strong>{authUser.email}</strong>
+                  <strong className="profile-display-name">{profileName}</strong>
+                  <span className="profile-email">{authUser.email}</span>
                   <p style={{ margin: "6px 0 10px" }}>You are signed in to ASTRA.</p>
                   {logoutError && <p role="alert" style={{ margin: "0 0 8px" }}>{logoutError}</p>}
                   <button type="button" className="icon-button" onClick={handleLogout} data-testid="button-logout">Log out</button>
@@ -455,6 +610,8 @@ function StatusTag({ children, tone = "neutral" }: { children: ReactNode; tone?:
 }
 
 function DashboardPage() {
+  const [dashboardUser, setDashboardUser] = useState<AuthUser | null>(null);
+  const [authAction, setAuthAction] = useState<string | null>(null);
   const [recent, setRecent] = useState(() => getSavedRides().slice(0, 2));
   const [plan, setPlan] = useState<RoutePlan | null>(() => getActiveRide());
   const [origin, setOrigin] = useState<Location | null>(() => getActiveRide()?.origin ?? null);
@@ -471,12 +628,50 @@ function DashboardPage() {
   const [riskLoading, setRiskLoading] = useState(false);
   const [riskError, setRiskError] = useState("");
   const [rideLocationMode, setRideLocationMode] = useState<"manual" | "gps">("manual");
-  const [rideLocation, setRideLocation] = useState<Location | null>(null);
+  const [rideLocation, setRideLocation] = useState<Location | null>(() => ({ name: "Ghaziabad", latitude: 28.6692, longitude: 77.4538, admin1: "Uttar Pradesh", country: "India" }));
   const [rideRadius, setRideRadius] = useState(50);
   const [locationStatus, setLocationStatus] = useState("Choose Ghaziabad or another place to find nearby rides.");
   const [locationLoading, setLocationLoading] = useState(false);
   const [publicGroups, setPublicGroups] = useState<TeamRide[]>([]);
   const [publicGroupsError, setPublicGroupsError] = useState("");
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    try {
+      const action = window.sessionStorage.getItem("astra_auth_action");
+      if (action) {
+        setAuthAction(action);
+        window.sessionStorage.removeItem("astra_auth_action");
+      }
+    } catch (_) {}
+
+    fetch(`${AUTH_API_BASE}/auth/me`, {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async (response) => {
+        if (!response.ok) return null;
+        const data = await response.json();
+        return data.user as AuthUser;
+      })
+      .then((user) => {
+        if (!controller.signal.aborted) setDashboardUser(user);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setDashboardUser(null);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  const dashboardDisplayName =
+    dashboardUser?.name?.trim() ||
+    dashboardUser?.email?.split("@")[0] ||
+    "Rider";
+  const dashboardFirstName = dashboardDisplayName.split(/\s+/)[0];
+  const dashboardGreeting =
+    authAction === "signup" ? "Welcome" : "Welcome back";
 
   function useCurrentRideLocation() {
     if (!navigator.geolocation) {
@@ -506,12 +701,26 @@ function DashboardPage() {
   }, []);
 
   const nearbyPublicGroups = useMemo(() => {
-    if (!rideLocation || typeof rideLocation.latitude !== "number" || typeof rideLocation.longitude !== "number") return [];
-    return publicGroups
-      .filter((group) => group.start_latitude != null && group.start_longitude != null && group.vacancies > 0)
-      .map((group) => ({ ...group, nearbyDistance: distanceKm(rideLocation.latitude, rideLocation.longitude, group.start_latitude!, group.start_longitude!) }))
+    const openGroups = publicGroups.filter((group) => group.vacancies > 0);
+
+    if (!rideLocation || typeof rideLocation.latitude !== "number" || typeof rideLocation.longitude !== "number") {
+      return openGroups.map((group) => ({ ...group, nearbyDistance: null as number | null }));
+    }
+
+    const withCoordinates = openGroups
+      .filter((group) => group.start_latitude != null && group.start_longitude != null)
+      .map((group) => ({
+        ...group,
+        nearbyDistance: distanceKm(rideLocation.latitude, rideLocation.longitude, group.start_latitude!, group.start_longitude!),
+      }))
       .filter((group) => group.nearbyDistance <= rideRadius)
       .sort((a, b) => a.nearbyDistance - b.nearbyDistance);
+
+    const withoutCoordinates = openGroups
+      .filter((group) => group.start_latitude == null || group.start_longitude == null)
+      .map((group) => ({ ...group, nearbyDistance: null as number | null }));
+
+    return [...withCoordinates, ...withoutCoordinates];
   }, [rideLocation, rideRadius, publicGroups]);
 
   useEffect(() => {
@@ -612,7 +821,7 @@ function DashboardPage() {
   return (
     <main className="page dashboard-page">
       <section className="dashboard-intro dashboard-welcome">
-        <PageHeading eyebrow="YOUR ASTRA DASHBOARD" title={<>Hello, Shivansh.</>} description="Ready for your next ride? Check the weather, understand the experimental risk estimate, and find riders heading your way." icon={Mountain} />
+        <PageHeading eyebrow="YOUR ASTRA DASHBOARD" title={<>{dashboardGreeting}, {dashboardFirstName}!</>} description="Ready for your next ride? Check the weather, understand the experimental risk estimate, and find riders heading your way." icon={Mountain} />
         <p className="hero-note"><span className="hero-note-line" />Ride prepared. Stay aware. Make every journey count.</p>
       </section>
       <div className="dashboard-rail">
@@ -715,7 +924,7 @@ function DashboardPage() {
           {rideLocation && nearbyPublicGroups.length > 0 && <div className="public-rides-grid">{nearbyPublicGroups.map((group) => <button key={group.id} type="button" className="public-ride-card" onClick={() => { window.location.href = `/team-riding?publicGroup=${group.id}`; }} aria-label={`View ${group.name} group details`}>
             <div className="public-ride-card-top"><span className="public-ride-route-icon"><Mountain size={17} /></span><span className={`vacancy-chip ${group.vacancies <= 2 ? "vacancy-low" : ""}`}>{group.vacancies} seats open</span></div>
             <h3>{group.name}</h3><p className="public-ride-route">{group.route_display}</p>
-            <div className="public-ride-meta"><span><UsersRound size={14} />{group.member_count} riders</span><span><MapPin size={14} />{Math.round(group.nearbyDistance)} km away</span></div>
+            <div className="public-ride-meta"><span><UsersRound size={14} />{group.member_count} riders</span><span><MapPin size={14} />{group.nearbyDistance == null ? "Distance unavailable" : `${Math.round(group.nearbyDistance)} km away`}</span></div>
             <div className="public-ride-footer"><span>{formatDeparture(group.departure_at)}</span><strong>View group <ArrowRight size={14} /></strong></div>
           </button>)}</div>}
           <p className="public-rides-disclaimer"><AlertTriangle size={14} />Nearby distance is calculated from each sample group’s starting coordinates. Listings are fetched from the ASTRA backend. Nearby filtering requires a group starting coordinate.</p>
@@ -737,6 +946,47 @@ function RoutePlannerPage() {
   const [analysisError, setAnalysisError] = useState("");
   const analysisAbortRef = useRef<AbortController | null>(null);
   const rideForm = useForm<{ rideDate: string }>({ defaultValues: { rideDate: "" } });
+  const [officialAlerts, setOfficialAlerts] = useState<OfficialAlert[]>([]);
+  const [officialAlertsLoading, setOfficialAlertsLoading] = useState(false);
+  const [officialAlertsError, setOfficialAlertsError] = useState("");
+  const [officialAlertsSourceStatus, setOfficialAlertsSourceStatus] = useState("unknown");
+
+useEffect(() => {
+  const controller = new AbortController();
+
+  setOfficialAlertsLoading(true);
+  setOfficialAlertsError("");
+
+  fetchOfficialAlerts(controller.signal)
+    .then((result) => {
+      setOfficialAlerts(result.alerts ?? []);
+      setOfficialAlertsSourceStatus(result.source_status ?? "unknown");
+
+      if (result.source_status !== "available") {
+        setOfficialAlertsError(
+          result.error || "The official alerts feed is currently unavailable.",
+        );
+      }
+    })
+    .catch((error: unknown) => {
+      if (controller.signal.aborted) return;
+
+      setOfficialAlertsError(
+        error instanceof Error
+          ? error.message
+          : "Could not load official disaster alerts.",
+      );
+      setOfficialAlertsSourceStatus("unavailable");
+    })
+    .finally(() => {
+      if (!controller.signal.aborted) {
+        setOfficialAlertsLoading(false);
+      }
+    });
+
+  return () => controller.abort();
+}, []);
+
 
   useEffect(() => () => analysisAbortRef.current?.abort(), []);
 
@@ -922,9 +1172,114 @@ function RoutePlannerPage() {
         </Panel>
 
         <div className="route-analysis-data-grid">
-          <Panel className="route-alerts-status-panel" kicker="Live road incidents" title="Accidents, closures & hazards">
-            <div className="analysis-source-status"><ShieldAlert size={20} /><div><strong>Road incident feeds not connected</strong><p>ASTRA is not currently checking live accidents, road closures, traffic jams, waterlogging or landslide reports. This is a known data gap, not a clear-road confirmation.</p></div></div>
-          </Panel>
+
+<Panel className="route-alerts-status-panel" kicker="Official disaster warnings" title="NDMA SACHET alerts">
+  {(() => {
+    const activeCount = officialAlerts.filter(
+      (alert) => alert.verification_status === "official_cap_current",
+    ).length;
+    const pendingCount = officialAlerts.filter(
+      (alert) => alert.verification_status === "details_pending",
+    ).length;
+    const inactiveCount = officialAlerts.filter(
+      (alert) => alert.verification_status === "expired_or_inactive",
+    ).length;
+
+    return (
+      <>
+        <div className="analysis-source-status">
+          <ShieldAlert size={20} />
+          <div>
+            <strong>
+              {officialAlertsLoading
+                ? "Loading official alerts..."
+                : officialAlertsSourceStatus === "available"
+                  ? "Official disaster feed available"
+                  : "Official disaster feed unavailable"}
+            </strong>
+            <p>
+              {officialAlertsError
+                ? officialAlertsError
+                : "India-wide disaster warnings. Route relevance has not been verified; these records do not confirm road closures."}
+            </p>
+          </div>
+        </div>
+
+        {!officialAlertsLoading && officialAlerts.length > 0 && (
+          <>
+            <div className="route-segment-list">
+              <article className="route-segment-card">
+                <div className="route-segment-marker">
+                  <ShieldAlert size={17} />
+                </div>
+                <div className="route-segment-main">
+                  <h3>Alert summary</h3>
+                  <p>
+                    {activeCount} marked active · {pendingCount} pending verification · {inactiveCount} expired or inactive
+                  </p>
+                  <small className="route-segment-provider">
+                    These counts describe feed records, not confirmed hazards along your route.
+                  </small>
+                </div>
+              </article>
+            </div>
+
+            <details className="route-alert-details">
+              <summary>View alert details ({officialAlerts.length} records)</summary>
+              <div className="route-segment-list">
+                {officialAlerts.slice(0, 20).map((alert, index) => (
+                  <article
+                    className="route-segment-card"
+                    key={`${alert.sent ?? alert.title ?? "alert"}-${index}`}
+                  >
+                    <div className="route-segment-marker">
+                      <ShieldAlert size={17} />
+                    </div>
+                    <div className="route-segment-main">
+                      <h3>
+                        {alert.headline || alert.title || alert.event || "Official disaster alert"}
+                      </h3>
+                      {alert.area_description && (
+                        <p>
+                          {Array.isArray(alert.area_description)
+                            ? alert.area_description.join(", ")
+                            : alert.area_description}
+                        </p>
+                      )}
+                      <small className="route-segment-provider">
+                        Verification: {
+                          alert.verification_status === "official_cap_current"
+                            ? "Official CAP record — marked active"
+                            : alert.verification_status === "details_pending"
+                              ? "Details pending — activity unconfirmed"
+                              : alert.verification_status === "expired_or_inactive"
+                                ? "Expired or inactive"
+                                : "Activity status unknown"
+                        }
+                      </small>
+                      <small className="route-segment-provider">
+                        Route relevance: Not verified
+                      </small>
+                    </div>
+                  </article>
+                ))}
+                {officialAlerts.length > 20 && (
+                  <p>Showing the first 20 of {officialAlerts.length} records.</p>
+                )}
+              </div>
+            </details>
+          </>
+        )}
+
+        {!officialAlertsLoading && officialAlerts.length === 0 && !officialAlertsError && (
+          <p>No alert records were returned. This does not confirm that roads are clear.</p>
+        )}
+      </>
+    );
+  })()}
+</Panel>
+
+
           <Panel className="route-alternatives-status-panel" kicker="Route options" title="Alternative comparison">
             <div className="analysis-source-status"><RouteIcon size={20} /><div><strong>Not available in this version</strong><p>The current OSRM integration returns one route. Alternative routes need a separate routing request and comparable risk checks before ASTRA can recommend one.</p></div></div>
           </Panel>
@@ -947,7 +1302,7 @@ function WeatherPage() {
   const [locationStatus, setLocationStatus] = useState("Detecting your location…");
   const [locationLoading, setLocationLoading] = useState(false);
 
-  function useCurrentLocation() {
+  function requestCurrentLocation() {
     if (!navigator.geolocation) {
       setLocationStatus("This browser does not support GPS. Search for a location manually.");
       return;
@@ -982,7 +1337,7 @@ function WeatherPage() {
   }
 
   useEffect(() => {
-    useCurrentLocation();
+    requestCurrentLocation();
     // Detect once when the Weather & Alerts page mounts.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -1061,7 +1416,7 @@ function WeatherPage() {
             <button
               className="text-button"
               type="button"
-              onClick={useCurrentLocation}
+              onClick={requestCurrentLocation}
               disabled={locationLoading}
             >
               <Crosshair size={15} aria-hidden="true" /> {locationLoading ? "Detecting location…" : "Use My Location"}

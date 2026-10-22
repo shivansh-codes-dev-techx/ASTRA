@@ -10,20 +10,51 @@ from typing import Literal
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, validator
 
+from backend import database
 from backend.auth import current_user
 
 router = APIRouter(prefix="/team-rides", tags=["Team Riding"])
-DB_PATH = Path(__file__).resolve().parent / "astra_users.db"
-
+DB_PATH = database.sqlite_database_path(
+    Path(__file__).resolve().parent / "astra_users.db"
+)
+def create_notification(
+    db,
+    user_id: int,
+    title: str,
+    message: str,
+    target_url: str,
+    notification_type: str = "general",
+    related_ride_id: int | None = None,
+):
+    db.execute(
+        """
+        INSERT INTO notifications (
+            user_id, title, message, notification_type,
+            target_url, related_ride_id, is_read, created_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, 0, ?)
+        """,
+        (
+            user_id,
+            title,
+            message,
+            notification_type,
+            target_url,
+            related_ride_id,
+            datetime.now(timezone.utc).isoformat(),
+        ),
+    )
 
 def connect_db():
-    db = sqlite3.connect(DB_PATH, timeout=10)
-    db.row_factory = sqlite3.Row
-    db.execute("PRAGMA foreign_keys = ON")
-    return db
+    """Use PostgreSQL when configured; otherwise preserve SQLite/test DB_PATH."""
+    return database.connect_db(DB_PATH)
 
 
 def init_db():
+    if database.is_postgres():
+        database.init_postgres_schema()
+        return
+
     with connect_db() as db:
         db.execute("""
             CREATE TABLE IF NOT EXISTS team_rides (
@@ -124,8 +155,14 @@ def _ride_dict(db: sqlite3.Connection, row: sqlite3.Row, user_id: int, include_m
     return result
 
 
-def _get_ride(db: sqlite3.Connection, ride_id: int):
-    row = db.execute("SELECT * FROM team_rides WHERE id = ?", (ride_id,)).fetchone()
+def _get_ride(db: sqlite3.Connection, ride_id: int, for_update: bool = False):
+    # PostgreSQL must lock the ride row during capacity checks so two concurrent
+    # join requests cannot both claim the final available seat.
+    lock_clause = " FOR UPDATE" if for_update and database.is_postgres() else ""
+    row = db.execute(
+        "SELECT * FROM team_rides WHERE id = ?" + lock_clause,
+        (ride_id,),
+    ).fetchone()
     if row is None:
         raise HTTPException(status_code=404, detail="Ride group not found.")
     return row
@@ -165,12 +202,20 @@ def create_ride(data: TeamRideCreate, request: Request):
     invite_code = secrets.token_hex(4).upper() if data.visibility == "private" else None
     created_at = datetime.now(timezone.utc).isoformat()
     with connect_db() as db:
-        cursor = db.execute("""
+        ride_id = database.insert_returning_id(
+            db,
+            """
             INSERT INTO team_rides
             (creator_id,name,origin,destination,departure_at,pace,meeting_point,notes,visibility,invite_code,max_riders,start_latitude,start_longitude,created_at)
             VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
-        """, (user["id"], data.name, data.origin, data.destination, data.departure_at, data.pace.strip(), data.meeting_point.strip(), data.notes.strip(), data.visibility, invite_code, data.max_riders, data.start_latitude, data.start_longitude, created_at))
-        ride_id = cursor.lastrowid
+            """,
+            (
+                user["id"], data.name, data.origin, data.destination,
+                data.departure_at, data.pace.strip(), data.meeting_point.strip(),
+                data.notes.strip(), data.visibility, invite_code, data.max_riders,
+                data.start_latitude, data.start_longitude, created_at,
+            ),
+        )
         db.execute("INSERT INTO team_ride_members (ride_id,user_id,joined_at) VALUES (?,?,?)", (ride_id, user["id"], created_at))
         row = _get_ride(db, ride_id)
         return {"message": "Ride group created.", "ride": _ride_dict(db, row, user["id"], include_members=True)}
@@ -190,7 +235,7 @@ def join_public_ride(ride_id: int, request: Request):
     user = current_user(request)
     with connect_db() as db:
         db.execute("BEGIN IMMEDIATE")
-        row = _get_ride(db, ride_id)
+        row = _get_ride(db, ride_id, for_update=True)
         if row["visibility"] != "public":
             raise HTTPException(status_code=403, detail="This group is private. Join using its invitation code.")
         existing = db.execute("SELECT 1 FROM team_ride_members WHERE ride_id=? AND user_id=?", (ride_id, user["id"])).fetchone()
@@ -201,6 +246,17 @@ def join_public_ride(ride_id: int, request: Request):
             raise HTTPException(status_code=409, detail="This ride group is full.")
         joined_at = datetime.now(timezone.utc).isoformat()
         db.execute("INSERT INTO team_ride_members (ride_id,user_id,joined_at) VALUES (?,?,?)", (ride_id, user["id"], joined_at))
+        if int(row["creator_id"]) != user["id"]:
+            rider_name = user.get("name") or user["email"]
+            create_notification(
+                db=db,
+                user_id=int(row["creator_id"]),
+                title="New rider joined your group",
+                message=f"{rider_name} joined your ride group: {row['name']}.",
+                target_url=f"/team-riding?publicGroup={ride_id}",
+                notification_type="group_join",
+                related_ride_id=ride_id,
+            )
         row = _get_ride(db, ride_id)
         return {"message": "You joined the public ride.", "ride": _ride_dict(db, row, user["id"], include_members=True)}
 
@@ -211,7 +267,11 @@ def join_private_by_code(data: JoinByCodeInput, request: Request):
     code = data.invite_code.strip().upper()
     with connect_db() as db:
         db.execute("BEGIN IMMEDIATE")
-        row = db.execute("SELECT * FROM team_rides WHERE invite_code=? AND visibility='private'", (code,)).fetchone()
+        lock_clause = " FOR UPDATE" if database.is_postgres() else ""
+        row = db.execute(
+            "SELECT * FROM team_rides WHERE invite_code=? AND visibility='private'" + lock_clause,
+            (code,),
+        ).fetchone()
         if row is None:
             raise HTTPException(status_code=404, detail="That private invitation code is invalid.")
         existing = db.execute("SELECT 1 FROM team_ride_members WHERE ride_id=? AND user_id=?", (row["id"], user["id"])).fetchone()
@@ -222,6 +282,17 @@ def join_private_by_code(data: JoinByCodeInput, request: Request):
             raise HTTPException(status_code=409, detail="This private ride group is full.")
         joined_at = datetime.now(timezone.utc).isoformat()
         db.execute("INSERT INTO team_ride_members (ride_id,user_id,joined_at) VALUES (?,?,?)", (row["id"], user["id"], joined_at))
+        if int(row["creator_id"]) != user["id"]:
+            rider_name = user.get("name") or user["email"]
+            create_notification(
+                db=db,
+                user_id=int(row["creator_id"]),
+                title="New rider joined your group",
+                message=f"{rider_name} joined your private ride group: {row['name']}.",
+                target_url=f"/team-riding?publicGroup={row['id']}",
+                notification_type="group_join",
+                related_ride_id=int(row["id"]),
+            )
         row = _get_ride(db, row["id"])
         return {"message": "You joined the private ride.", "ride": _ride_dict(db, row, user["id"], include_members=True)}
 

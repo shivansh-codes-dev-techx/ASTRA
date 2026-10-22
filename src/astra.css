@@ -358,6 +358,91 @@
 .header-location-copy small { color: #59768e; font-size: 9px; }
 .header-notification-button { position: relative; width: 42px; height: 42px; border-radius: 50%; }
 .header-notification-badge { position: absolute; top: -4px; right: -3px; min-width: 19px; height: 19px; display: grid; place-items: center; padding: 0 4px; border: 2px solid rgba(246,251,255,.95); border-radius: 999px; color: #fff; background: #ef2938; font-size: 10px; font-weight: 800; line-height: 1; }
+
+.header-notification-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.header-notification-popover {
+  position: absolute;
+  top: calc(100% + 12px);
+  right: 0;
+  z-index: 1000;
+  width: min(360px, calc(100vw - 32px));
+  max-height: min(460px, 70vh);
+  overflow-y: auto;
+  padding: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  border-radius: 16px;
+  background: #101b2a;
+  color: #f8fafc;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.35);
+}
+
+.header-notification-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+  font-size: 14px;
+}
+
+.header-notification-heading span {
+  color: #cbd5e1;
+  font-size: 12px;
+}
+
+.header-notification-empty {
+  padding: 18px 8px;
+  color: #cbd5e1;
+  text-align: center;
+  font-size: 13px;
+}
+
+.header-notification-item {
+  display: flex;
+  width: 100%;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 12px 10px;
+  border: 0;
+  border-bottom: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.header-notification-item:hover,
+.header-notification-item:focus-visible {
+  background: rgba(148, 163, 184, 0.12);
+}
+
+.header-notification-item.is-unread {
+  background: rgba(59, 130, 246, 0.12);
+}
+
+.header-notification-item strong {
+  font-size: 13px;
+}
+
+.header-notification-item span {
+  color: #d1d9e5;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.header-notification-item small {
+  color: #94a3b8;
+  font-size: 10px;
+}
+
 .header-profile-button { min-height: 42px; display: flex; align-items: center; gap: 10px; padding: 4px 12px 4px 5px; border: 1px solid rgba(255,255,255,.8); border-radius: 24px; color: #102a43; background: rgba(245,250,255,.72); box-shadow: 0 5px 24px rgba(24,62,88,.05); backdrop-filter: blur(16px); cursor: pointer; white-space: nowrap; }
 .header-profile-button:hover, .header-profile-button[aria-expanded="true"] { background: rgba(255,255,255,.94); }
 .header-profile-initials { width: 34px; height: 34px; display: grid; flex: 0 0 auto; place-items: center; border-radius: 50%; color: #fff; background: #173c63; font-size: 12px; font-weight: 700; }
@@ -437,7 +522,7 @@
   .dashboard-route-controls .service-inline { margin-top: 8px; }
 }
 
-/* ASTRA dashboard refinement � additive overrides */
+/* ASTRA dashboard refinement: additive overrides */
 .astra-app {
   --glass: rgba(205, 229, 246, .78);
   --glass-strong: rgba(220, 239, 250, .90);
@@ -1687,14 +1772,14 @@
   gap: clamp(20px, 2.4vw, 30px);
   padding-top: clamp(22px, 3vw, 38px);
   padding-bottom: 32px;
-  animation: astra-dashboard-enter .65s cubic-bezier(.2,.7,.2,1) both;
+  animation: astra-dashboard-enter .3s cubic-bezier(.2,.7,.2,1) both;
 }
 .dashboard-intro.dashboard-welcome {
   width: 100%;
   max-width: none;
   padding: 0;
   margin: 0;
-  animation: astra-rise-in .65s .04s both;
+  animation: astra-rise-in .3s .03s both;
 }
 .dashboard-welcome .page-heading .eyebrow { font-size: 11px; letter-spacing: .18em; }
 .dashboard-welcome .page-heading h1 {
@@ -1729,9 +1814,9 @@
   min-height: 370px;
   padding: clamp(20px, 2.1vw, 28px);
   border-radius: 20px;
-  animation: astra-rise-in .65s both;
+  animation: astra-rise-in .3s both;
 }
-.dashboard-status-grid > .status-panel:nth-child(2) { animation-delay: .12s; }
+.dashboard-status-grid > .status-panel:nth-child(2) { animation-delay: .05s; }
 .dashboard-status-grid .status-panel-head { gap: 12px; margin-bottom: 16px; }
 .dashboard-status-grid .status-title { font-size: clamp(14px, 1.15vw, 16px); gap: 10px; }
 .dashboard-status-grid .status-title svg { width: 19px; height: 19px; }
@@ -1784,17 +1869,15 @@
   width: 100%;
   padding: clamp(20px, 2.1vw, 28px);
   border-radius: 20px;
-  animation: astra-rise-in .7s .18s both;
+  animation: astra-rise-in .3s .08s both;
 }
 .public-rides-panel .panel-heading h2 { font-size: clamp(20px, 2vw, 25px); }
 .public-rides-intro p { font-size: 13px; line-height: 1.65; }
 .public-rides-panel .nearby-ride-card,
 .public-rides-panel .public-ride-card { transition: transform .22s ease, box-shadow .22s ease, border-color .22s ease; }
 .public-rides-panel .nearby-ride-card:hover,
-.public-rides-panel .public-ride-card:hover { transform: translateY(-3px); box-shadow: 0 14px 32px rgba(9,35,55,.12); }
+.public-rides-panel .public-ride-card:hover { transform: translateY(-2px); box-shadow: 0 14px 32px rgba(9,35,55,.12); }
 .glass-panel { transition: border-color .22s ease, box-shadow .22s ease; }
-.dashboard-status-grid > .status-panel:hover,
-.public-rides-panel:hover { border-color: rgba(117,190,232,.72); box-shadow: 0 18px 44px rgba(5,26,43,.12); }
 @keyframes astra-dashboard-enter { from { opacity: 0; } to { opacity: 1; } }
 @keyframes astra-rise-in { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: translateY(0); } }
 @media (max-width: 850px) {
@@ -1940,4 +2023,304 @@
   .weather-search-panel .small-note, .weather-location-actions .small-note { font-size: 12px; }
   .unavailable-alert p { font-size: 12px; }
   .hour-cell { min-width: 104px; }
+}
+
+.nav-item {
+  font-size: 12px;
+}
+
+.dashboard-rail .status-copy,
+.dashboard-rail .risk-notice {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.header-notification-popover {
+  line-height: 1.5;
+}
+
+.header-notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.notification-clear-button {
+  min-height: 34px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 0 9px;
+  border: 1px solid rgba(248, 113, 113, .42);
+  border-radius: 9px;
+  color: #fecaca;
+  background: rgba(127, 29, 29, .35);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.notification-clear-button:hover:not(:disabled) {
+  background: rgba(153, 27, 27, .55);
+}
+
+.notification-clear-button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.header-notification-popover [role="alert"] {
+  margin: 10px 0;
+  color: #fecaca;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.profile-display-name {
+  display: block;
+  overflow-wrap: anywhere;
+  color: #173f5c;
+  font-size: 14px;
+  line-height: 1.4;
+}
+
+.profile-email {
+  display: block;
+  overflow-wrap: anywhere;
+  margin-top: 2px;
+  color: #426078;
+  font-size: 12px;
+}
+
+.team-grid {
+  grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr);
+  align-items: start;
+}
+
+.team-create-panel .astra-field label {
+  color: #294c63;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.team-create-panel .astra-field > input,
+.team-create-panel .astra-field > select,
+.team-create-panel .astra-field > textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 44px;
+  padding: 9px 11px;
+  border: 1px solid rgba(65, 112, 140, .35);
+  border-radius: 10px;
+  color: #102a43;
+  background: rgba(255, 255, 255, .92);
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.team-create-panel .astra-field > textarea {
+  min-height: 88px;
+  resize: vertical;
+}
+
+.team-create-panel .astra-field > input:focus-visible,
+.team-create-panel .astra-field > select:focus-visible,
+.team-create-panel .astra-field > textarea:focus-visible {
+  outline: 3px solid rgba(33, 107, 154, .65);
+  outline-offset: 2px;
+}
+
+.team-create-panel .status-copy,
+.team-create-panel .local-only-note {
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.group-card {
+  min-width: 0;
+}
+
+.group-card-head > div {
+  min-width: 0;
+}
+
+.group-card-head h3,
+.group-card .public-ride-route,
+.group-card .selected-ride-notes,
+.selected-ride-details strong {
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.group-card-head h3 {
+  font-size: 15px;
+  line-height: 1.4;
+}
+
+.group-card-head small,
+.selected-ride-details small {
+  color: #526f83;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.group-actions {
+  justify-content: flex-start;
+  flex-wrap: wrap;
+}
+
+.group-actions .secondary-button,
+.group-actions .primary-button {
+  min-height: 38px;
+  font-size: 12px;
+}
+
+@media (max-width: 900px) {
+  .team-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 720px) {
+  .nav-item {
+    min-width: 70px;
+    font-size: 10px;
+  }
+
+  .header-notification-popover {
+    right: -44px;
+    max-height: min(70vh, 520px);
+  }
+
+  .header-profile-popover {
+    right: -4px;
+  }
+
+}
+
+@media (max-width: 460px) {
+  .group-card-head {
+    flex-wrap: wrap;
+  }
+
+  .group-actions {
+    align-items: center;
+    flex-direction: row;
+  }
+
+  .group-actions .primary-button,
+  .group-actions .secondary-button {
+    width: auto;
+  }
+
+  .selected-ride-details {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.header-profile-popover [data-testid="button-logout"] {
+  width: auto;
+  min-width: 82px;
+  min-height: 36px;
+  flex: 0 0 auto;
+  padding: 0 12px;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.astra-app .primary-button,
+.astra-app .secondary-button,
+.astra-app .icon-button,
+.astra-app .header-icon-button,
+.astra-app .header-profile-button,
+.astra-app .nav-item,
+.astra-app .header-search-results a,
+.astra-app .public-ride-card,
+.astra-app .group-actions .danger-icon {
+  transition:
+    color .18s ease,
+    background-color .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    transform .18s ease;
+}
+
+.astra-app .primary-button:active:not(:disabled),
+.astra-app .secondary-button:active:not(:disabled),
+.astra-app .icon-button:active:not(:disabled),
+.astra-app .header-icon-button:active:not(:disabled),
+.astra-app .nav-item:active {
+  transform: translateY(1px);
+}
+
+.astra-app .nav-item[aria-current="page"] {
+  transition: color .18s ease, background-color .18s ease, box-shadow .18s ease;
+}
+
+.astra-app .nav-item[aria-current="page"]:hover {
+  box-shadow: 0 4px 12px rgba(23, 76, 114, .18);
+}
+
+.header-profile-popover,
+.header-notification-popover {
+  animation: astra-menu-enter .2s ease-out both;
+  transform-origin: top right;
+}
+
+.inner-page > .page-heading,
+.inner-page > .glass-panel,
+.inner-page > .team-grid,
+.inner-page > .team-emergency-panel {
+  animation: astra-rise-in .3s ease-out both;
+}
+
+.inner-page > .glass-panel,
+.inner-page > .team-grid {
+  animation-delay: .04s;
+}
+
+.risk-gauge-value {
+  transition: stroke-dashoffset .3s ease-out;
+}
+
+@keyframes astra-menu-enter {
+  from {
+    opacity: 0;
+    transform: translateY(-4px) scale(.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dashboard-page,
+  .dashboard-intro.dashboard-welcome,
+  .dashboard-status-grid > .status-panel,
+  .public-rides-panel,
+  .inner-page > .page-heading,
+  .inner-page > .glass-panel,
+  .inner-page > .team-grid,
+  .inner-page > .team-emergency-panel,
+  .header-profile-popover,
+  .header-notification-popover {
+    animation: none !important;
+  }
+
+  .astra-app .primary-button,
+  .astra-app .secondary-button,
+  .astra-app .icon-button,
+  .astra-app .header-icon-button,
+  .astra-app .header-profile-button,
+  .astra-app .nav-item,
+  .astra-app .header-search-results a,
+  .astra-app .public-ride-card,
+  .astra-app .group-actions .danger-icon,
+  .risk-gauge-value {
+    transition: none !important;
+  }
 }
