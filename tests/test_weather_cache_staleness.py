@@ -1,11 +1,14 @@
+import io
 import importlib.util
 import sys
 import time
 import types
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
+from starlette.middleware.cors import CORSMiddleware
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -133,3 +136,31 @@ class WeatherCacheStalenessTests(unittest.TestCase):
         area_alerts = self.main.get_area_alerts(latitude, longitude)
         self.assertTrue(area_alerts["is_stale"])
         self.assertGreaterEqual(area_alerts["data_age_seconds"], 600)
+
+    def test_provider_errors_do_not_log_sensitive_error_details(self):
+        sensitive_marker = "test-only-weather-key"
+
+        def provider_failure(_latitude, _longitude):
+            raise RuntimeError(f"request failed with key={sensitive_marker}")
+
+        self.main.fetch_open_meteo = provider_failure
+        self.main.fetch_weatherapi = provider_failure
+        output = io.StringIO()
+
+        with redirect_stdout(output), self.assertRaises(HTTPException) as raised:
+            self.main.get_weather(28.6, 77.2)
+
+        self.assertEqual(raised.exception.status_code, 503)
+        self.assertNotIn(sensitive_marker, output.getvalue())
+        self.assertIn("RuntimeError", output.getvalue())
+
+    def test_credentialed_cors_uses_explicit_origins(self):
+        cors = next(
+            middleware
+            for middleware in self.main.app.user_middleware
+            if middleware.cls is CORSMiddleware
+        )
+
+        self.assertTrue(cors.kwargs["allow_credentials"])
+        self.assertNotIn("*", cors.kwargs["allow_origins"])
+        self.assertIsNone(cors.kwargs.get("allow_origin_regex"))

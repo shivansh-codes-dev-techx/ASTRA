@@ -10,6 +10,7 @@ import unittest
 from pathlib import Path
 
 from fastapi import FastAPI
+from starlette.requests import Request
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -307,6 +308,72 @@ class PrivateJoinNotificationTests(unittest.TestCase):
         self.assertEqual(self._rows("SELECT user_id FROM team_ride_members WHERE ride_id = 1"), [(1,)])
         self.assertEqual(self._rows("SELECT COUNT(*) FROM notifications"), [(0,)])
         self._assert_notification_route_handled()
+
+    def test_public_ride_member_emails_are_visible_only_to_members(self):
+        db = sqlite3.connect(self.database_path)
+        db.execute("UPDATE team_rides SET visibility = 'public' WHERE id = 1")
+        db.execute(
+            """
+            INSERT INTO team_ride_members (ride_id, user_id, joined_at)
+            VALUES (1, 2, '2099-01-01T00:00:00+00:00')
+            """
+        )
+        db.commit()
+        db.close()
+
+        non_member_request = Request({
+            "type": "http",
+            "test_user": {
+                "id": 3,
+                "name": "Non-member",
+                "email": "non-member@example.test",
+            },
+        })
+        member_request = Request({
+            "type": "http",
+            "test_user": {
+                "id": 2,
+                "name": "Rider",
+                "email": "rider@example.test",
+            },
+        })
+
+        non_member_result = self.team_rides.get_ride(1, non_member_request)["ride"]
+        member_result = self.team_rides.get_ride(1, member_request)["ride"]
+
+        self.assertNotIn("members", non_member_result)
+        self.assertIsNone(non_member_result["invite_code"])
+        self.assertEqual(
+            sorted(member["email"] for member in member_result["members"]),
+            ["creator@example.test", "rider@example.test"],
+        )
+
+    def test_new_private_ride_codes_have_128_bits_of_entropy(self):
+        request = Request({
+            "type": "http",
+            "test_user": {
+                "id": 1,
+                "name": "Creator",
+                "email": "creator@example.test",
+            },
+        })
+        data = self.team_rides.TeamRideCreate(
+            name="New Private Ride",
+            origin="Test Start",
+            destination="Test Finish",
+            departure_at="2099-01-01T12:00:00Z",
+            visibility="private",
+            max_riders=5,
+        )
+
+        result = self.team_rides.create_ride(data, request)
+        invite_code = result["ride"]["invite_code"]
+
+        self.assertRegex(invite_code, r"^[0-9A-F]{32}$")
+        self.assertEqual(
+            self.team_rides.JoinByCodeInput(invite_code=invite_code).invite_code,
+            invite_code,
+        )
 
 
 if __name__ == "__main__":

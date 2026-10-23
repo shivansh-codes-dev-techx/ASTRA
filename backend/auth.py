@@ -7,13 +7,15 @@ import logging
 import os
 import secrets
 import time
+import sqlite3
+import psycopg
 from pathlib import Path
 from urllib.parse import urlparse
 from backend import database
 import requests
 from fastapi import APIRouter, HTTPException, Request, Response
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, EmailStr, Field
-
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 DB_PATH = database.sqlite_database_path(
     Path(__file__).resolve().parent / "astra_users.db"
@@ -113,6 +115,19 @@ def init_db():
                 FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
             )
         """)
+        db.execute("""
+            CREATE TABLE IF NOT EXISTS auth_sessions (
+                session_id TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                revoked_at INTEGER,
+                FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+            )
+        """)
+        db.execute("""
+            CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
+            ON auth_sessions(user_id)
+        """)
 
 
 def hash_password(password: str) -> str:
@@ -142,15 +157,29 @@ def verify_password(password: str, stored: str) -> bool:
 
 
 def create_token(user_id: int) -> str:
+    session_id = secrets.token_urlsafe(32)
+    expires_at = int(time.time()) + TOKEN_TTL
+
+    with connect_db() as db:
+        db.execute(
+            """
+            INSERT INTO auth_sessions (session_id, user_id, expires_at, revoked_at)
+            VALUES (?, ?, ?, NULL)
+            """,
+            (session_id, int(user_id), expires_at),
+        )
+
     payload = {
         "sub": int(user_id),
-        "exp": int(time.time()) + TOKEN_TTL,
-        "nonce": secrets.token_urlsafe(12),
+        "exp": expires_at,
+        "nonce": session_id,
     }
     body = base64.urlsafe_b64encode(
         json.dumps(payload, separators=(",", ":")).encode()
     ).decode().rstrip("=")
-    signature = hmac.new(SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    signature = hmac.new(
+        SECRET.encode(), body.encode(), hashlib.sha256
+    ).hexdigest()
     return f"{body}.{signature}"
 
 
@@ -184,16 +213,54 @@ def _valid_google_csrf_token(cookie_token: str, submitted_token: str):
 def read_token(token: str):
     try:
         body, signature = token.rsplit(".", 1)
-        expected = hmac.new(SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+        expected = hmac.new(
+            SECRET.encode(), body.encode(), hashlib.sha256
+        ).hexdigest()
         if not hmac.compare_digest(signature, expected):
             return None
+
         padded = body + "=" * (-len(body) % 4)
         payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
-        if int(payload["exp"]) <= int(time.time()):
+        user_id = int(payload["sub"])
+        expires_at = int(payload["exp"])
+        session_id = payload["nonce"]
+
+        if expires_at <= int(time.time()):
             return None
-        return int(payload["sub"])
-    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+
+        try:
+            with connect_db() as db:
+                session = db.execute(
+                    """
+                    SELECT user_id, expires_at, revoked_at
+                    FROM auth_sessions
+                    WHERE session_id = ?
+                    """,
+                    (session_id,),
+                ).fetchone()
+        except (sqlite3.Error, psycopg.Error) as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="Authentication service temporarily unavailable.",
+            ) from exc
+
+        if (
+            session is None
+            or int(session["user_id"]) != user_id
+            or int(session["expires_at"]) <= int(time.time())
+            or session["revoked_at"] is not None
+        ):
+            return None
+
+        return user_id
+    except (
+        ValueError,
+        KeyError,
+        TypeError,
+        json.JSONDecodeError,
+    ):
         return None
+
 
 
 def _secure_cookie_setting(request: Request):
@@ -222,10 +289,17 @@ def current_user(request: Request):
     user_id = read_token(token) if token else None
     if user_id is None:
         raise HTTPException(status_code=401, detail="Please log in.")
-    with connect_db() as db:
-        user = db.execute(
-            "SELECT id, email, name FROM users WHERE id = ?", (user_id,)
-        ).fetchone()
+    try:
+        with connect_db() as db:
+            user = db.execute(
+                "SELECT id, email, name FROM users WHERE id = ?",
+                (user_id,),
+            ).fetchone()
+    except (sqlite3.Error, psycopg.Error) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Authentication service temporarily unavailable.",
+        ) from exc
     if user is None:
         raise HTTPException(status_code=401, detail="Account not found.")
     return {"id": user["id"], "email": user["email"], "name": user["name"]}
@@ -653,7 +727,58 @@ def me(request: Request):
     return {"user": current_user(request)}
 
 
+
+
 @router.post("/logout")
-def logout(response: Response):
-    response.delete_cookie(key=COOKIE_NAME, path="/", httponly=True, samesite="lax")
+def logout(request: Request, response: Response):
+    token = request.cookies.get(COOKIE_NAME)
+
+    try:
+        if token:
+            try:
+                body, signature = token.rsplit(".", 1)
+                expected = hmac.new(
+                    SECRET.encode(), body.encode(), hashlib.sha256
+                ).hexdigest()
+
+                if hmac.compare_digest(signature, expected):
+                    padded = body + "=" * (-len(body) % 4)
+                    payload = json.loads(
+                        base64.urlsafe_b64decode(padded.encode())
+                    )
+                    session_id = payload.get("nonce")
+
+                    if isinstance(session_id, str) and session_id:
+                        with connect_db() as db:
+                            db.execute(
+                                """
+                                UPDATE auth_sessions
+                                SET revoked_at = ?
+                                WHERE session_id = ? AND revoked_at IS NULL
+                                """,
+                                (int(time.time()), session_id),
+                            )
+            except (ValueError, TypeError, json.JSONDecodeError):
+                pass
+    except Exception:
+        logger.exception("Logout failed while revoking session.")
+        error_response = JSONResponse(
+            status_code=503,
+            content={"detail": "Unable to complete logout. Please try again."},
+        )
+        error_response.delete_cookie(
+            key=COOKIE_NAME,
+            path="/",
+            httponly=True,
+            samesite="lax",
+            secure=_secure_cookie_setting(request),
+        )
+        return error_response
+    response.delete_cookie(
+        key=COOKIE_NAME,
+        path="/",
+        httponly=True,
+        samesite="lax",
+        secure=_secure_cookie_setting(request),
+    )
     return {"message": "Logged out."}

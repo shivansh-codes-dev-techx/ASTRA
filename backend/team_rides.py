@@ -125,7 +125,7 @@ class TeamRideCreate(BaseModel):
 
 
 class JoinByCodeInput(BaseModel):
-    invite_code: str = Field(min_length=4, max_length=20)
+    invite_code: str = Field(min_length=4, max_length=64)
 
 
 def _ride_dict(db: sqlite3.Connection, row: sqlite3.Row, user_id: int, include_members: bool = False) -> dict:
@@ -147,7 +147,7 @@ def _ride_dict(db: sqlite3.Connection, row: sqlite3.Row, user_id: int, include_m
         "created_at": row["created_at"], "is_creator": is_creator, "is_member": is_member,
         "invite_code": row["invite_code"] if is_creator else None,
     }
-    if include_members:
+    if include_members and (is_creator or is_member):
         result["members"] = [dict(member) for member in db.execute(
             "SELECT u.id, u.email, m.joined_at FROM team_ride_members m JOIN users u ON u.id=m.user_id WHERE m.ride_id=? ORDER BY m.joined_at",
             (row["id"],),
@@ -199,7 +199,7 @@ def list_my_rides(request: Request):
 @router.post("", status_code=201)
 def create_ride(data: TeamRideCreate, request: Request):
     user = current_user(request)
-    invite_code = secrets.token_hex(4).upper() if data.visibility == "private" else None
+    invite_code = secrets.token_hex(16).upper() if data.visibility == "private" else None
     created_at = datetime.now(timezone.utc).isoformat()
     with connect_db() as db:
         ride_id = database.insert_returning_id(

@@ -295,7 +295,7 @@ def get_weather(latitude: float, longitude: float):
         provider = "open-meteo"
 
     except Exception as error:
-        print(f"Open-Meteo failed: {error}")
+        print(f"Open-Meteo failed ({type(error).__name__})")
 
     # 3. Fall back to WeatherAPI
     if weather_data is None:
@@ -306,7 +306,7 @@ def get_weather(latitude: float, longitude: float):
             provider = "weatherapi"
 
         except Exception as error:
-            print(f"WeatherAPI failed: {error}")
+            print(f"WeatherAPI failed ({type(error).__name__})")
 
     # 4. Use stale cache if both providers fail
     if weather_data is None:

@@ -125,6 +125,26 @@ class SavedRideSchemaTests(unittest.TestCase):
         )
         self.saved_rides.save_account_ride(ride, self.request())
 
+        self.assertEqual(
+            self.saved_rides.list_saved_rides(self.request(2))["rides"],
+            [],
+        )
+        with self.assertRaises(HTTPException) as raised:
+            self.saved_rides.save_account_ride(
+                self.saved_rides.SavedRideInput(
+                    id="ride-owned",
+                    name="Changed by another account",
+                    createdAt="2026-10-22T06:00:00Z",
+                    plan={"distanceMeters": 9999},
+                ),
+                self.request(2),
+            )
+        self.assertEqual(raised.exception.status_code, 409)
+        self.assertEqual(
+            self.saved_rides.list_saved_rides(self.request())["rides"][0]["name"],
+            "Weekend route",
+        )
+
         with self.assertRaises(HTTPException) as raised:
             self.saved_rides.delete_account_ride("ride-owned", self.request(2))
         self.assertEqual(raised.exception.status_code, 404)

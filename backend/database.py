@@ -245,6 +245,14 @@ def _postgres_schema_statements():
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS auth_sessions (
+            session_id TEXT PRIMARY KEY,
+            user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+            expires_at BIGINT NOT NULL,
+            revoked_at BIGINT
+        )
+        """,
+        """
         CREATE TABLE IF NOT EXISTS saved_rides (
             id TEXT PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -293,6 +301,10 @@ def _postgres_schema_statements():
             joined_at TEXT NOT NULL,
             PRIMARY KEY (ride_id, user_id)
         )
+        """,
+        """
+        CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
+        ON auth_sessions(user_id)
         """,
         """
         CREATE INDEX IF NOT EXISTS idx_saved_rides_user_created

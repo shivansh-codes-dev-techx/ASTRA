@@ -102,6 +102,16 @@ class AuthProviderTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls._temporary = tempfile.TemporaryDirectory(prefix="astra-auth-tests-")
+        cls._database_env = patch.dict(
+            os.environ,
+            {
+                "DATABASE_URL": "",
+                "ASTRA_SQLITE_PATH": str(
+                    Path(cls._temporary.name) / "auth-import.db"
+                ),
+            },
+        )
+        cls._database_env.start()
         cls.package_dir = Path(cls._temporary.name) / "isolated_auth"
         cls.package_dir.mkdir()
         (cls.package_dir / "__init__.py").write_text("", encoding="utf-8")
@@ -123,14 +133,15 @@ class AuthProviderTests(unittest.TestCase):
             )
             cls.auth = importlib.util.module_from_spec(spec)
             sys.modules[module_name] = cls.auth
+            # Import auth in isolated SQLite mode for these tests only.
             spec.loader.exec_module(cls.auth)
         finally:
             sqlite3.connect = original_connect
-
     @classmethod
     def tearDownClass(cls):
         sys.modules.pop("isolated_auth.auth", None)
         sys.modules.pop("isolated_auth", None)
+        cls._database_env.stop()
         cls._temporary.cleanup()
 
     def setUp(self):
@@ -371,16 +382,187 @@ class AuthProviderTests(unittest.TestCase):
         self.assertEqual(status, 400)
         self.assertIn("invalid or expired", reused["detail"])
 
-        status, login_result, _ = self.client.request(
+        status, login_result, login_headers = self.client.request(
             "POST",
             "/auth/login",
             {"email": "rider@example.com", "password": "test-password-123"},
         )
         self.assertEqual(status, 200, login_result)
         self.assertIn(self.auth.COOKIE_NAME, self.client.cookies)
+        session_cookie = login_headers[b"set-cookie"].decode("latin-1")
+        cookie_attributes = session_cookie.lower()
+        self.assertIn("httponly", cookie_attributes)
+        self.assertIn("secure", cookie_attributes)
+        self.assertIn("samesite=lax", cookie_attributes)
+        self.assertIn("path=/", cookie_attributes)
         status, me_result, _ = self.client.request("GET", "/auth/me")
         self.assertEqual(status, 200)
         self.assertEqual(me_result["user"]["name"], "Test Rider")
+
+    def test_logout_revokes_existing_session_token(self):
+        # Create a test account.
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO users (name, email, password_hash, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    "Logout Test Rider",
+                    "logout-test@example.com",
+                    self.auth.hash_password("correct-test-password"),
+                    1,
+                ),
+            )
+
+        # Log in and capture the session cookie.
+        status, _, headers = self.client.request(
+            "POST",
+            "/auth/login",
+            payload={
+                   "email": "logout-test@example.com",
+                   "password": "correct-test-password",
+            },
+        )
+        self.assertEqual(status, 200)
+
+        session_cookie = headers[b"set-cookie"].decode("latin-1")
+        self.assertTrue(
+            session_cookie.startswith(f"{self.auth.COOKIE_NAME}=")
+        )
+        token = session_cookie.split(";", 1)[0].split("=", 1)[1]
+
+        # The token must work before logout.
+        status, _, _ = self.client.request(
+            "GET", "/auth/me", headers={"Cookie": f"{self.auth.COOKIE_NAME}={token}"}
+        )
+        self.assertEqual(status, 200)
+
+        # Logout using the same session.
+        status, result, _ = self.client.request(
+            "POST",
+            "/auth/logout",
+            headers={
+                "Cookie": f"{self.auth.COOKIE_NAME}={token}"
+            },
+        )
+        self.assertEqual(status, 200)
+        self.assertEqual(result["message"], "Logged out.")
+
+        # Replaying the old token must fail, even without the browser cookie.
+        status, _, _ = self.client.request(
+            "GET", "/auth/me", headers={"Cookie": f"{self.auth.COOKIE_NAME}={token}"}
+        )
+        self.assertEqual(status, 401)
+    def test_logout_database_failure_returns_503_and_clears_cookie(self):
+        token = self.auth.create_token(1)
+        body, signature = token.rsplit(".", 1)
+
+        with patch.object(
+            self.auth,
+            "connect_db",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            status, result, headers = self.client.request(
+                "POST",
+                "/auth/logout",
+                headers={
+                    "Cookie": f"{self.auth.COOKIE_NAME}={token}"
+                },
+            )
+
+        self.assertEqual(status, 503)
+        self.assertEqual(
+            result["detail"],
+            "Unable to complete logout. Please try again.",
+        )
+
+        set_cookie = headers.get(b"set-cookie", b"").decode("latin-1").lower()
+        self.assertIn(f"{self.auth.COOKIE_NAME}=", set_cookie)
+        self.assertIn("max-age=0", set_cookie)
+    def test_me_returns_503_when_session_database_is_unavailable(self):
+        token = self.auth.create_token(1)
+
+        with patch.object(
+            self.auth,
+            "connect_db",
+            side_effect=sqlite3.OperationalError("database unavailable"),
+        ):
+            status, result, _ = self.client.request(
+                "GET",
+                "/auth/me",
+                headers={
+                    "Cookie": f"{self.auth.COOKIE_NAME}={token}"
+                },
+            )
+
+        self.assertEqual(status, 503)
+    def test_me_returns_503_when_user_lookup_database_fails(self):
+        token = self.auth.create_token(1)
+        original_connect = self.auth.connect_db
+        calls = 0
+
+        def fail_on_second_connection():
+            nonlocal calls
+            calls += 1
+            if calls == 2:
+                raise sqlite3.OperationalError("database unavailable")
+            return original_connect()
+
+        with patch.object(
+            self.auth,
+            "connect_db",
+            side_effect=fail_on_second_connection,
+        ):
+            status, result, _ = self.client.request(
+                "GET",
+                "/auth/me",
+                headers={
+                    "Cookie": f"{self.auth.COOKIE_NAME}={token}"
+                },
+            )
+
+        self.assertEqual(status, 503)
+        self.assertEqual(
+            result["detail"],
+            "Authentication service temporarily unavailable.",
+        )
+
+
+    def test_failed_password_login_does_not_create_session_or_change_account(self):
+        with self._connect() as db:
+            db.execute(
+                """
+                INSERT INTO users (name, email, password_hash, created_at)
+                VALUES (?, ?, ?, ?)
+                """,
+                (
+                    "Test Account",
+                    "login-test@example.com",
+                    self.auth.hash_password("correct-test-password"),
+                    1,
+                ),
+            )
+
+        status, result, _ = self.client.request(
+            "POST",
+            "/auth/login",
+            {"email": "login-test@example.com", "password": "wrong-test-password"},
+        )
+
+        self.assertEqual(status, 401, result)
+        self.assertNotIn(self.auth.COOKIE_NAME, self.client.cookies)
+        with self._connect() as db:
+            user = db.execute(
+                "SELECT email, email_verified FROM users WHERE email = ?",
+                ("login-test@example.com",),
+            ).fetchone()
+            self.assertEqual(
+                db.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+                1,
+            )
+        self.assertEqual(user["email"], "login-test@example.com")
+        self.assertEqual(user["email_verified"], 1)
 
     def test_invalid_and_expired_verification_tokens_fail(self):
         issued_tokens = []
@@ -496,30 +678,57 @@ class AuthProviderTests(unittest.TestCase):
                     0,
                 )
 
-        # Missing body token is rejected by input validation before the route runs.
-        status, result, _ = self._google_request(include_csrf=False)
-        self.assertEqual(status, 422, result)
-        assert_no_session_or_account()
+        with self._configured_google(), patch.object(
+            self.auth,
+            "_verify_google_credential",
+            return_value=("test-subject", "test@example.com", "Test User"),
+        ) as verify_credential:
+            # Missing body token is rejected by input validation before the route runs.
+            status, result, _ = self._google_request(include_csrf=False)
+            self.assertEqual(status, 422, result)
+            assert_no_session_or_account()
 
-        # A valid body token cannot be used without its browser-bound cookie.
-        token = self._issue_google_csrf()
-        self.client.cookies.pop(self.auth.GOOGLE_CSRF_COOKIE_NAME)
-        status, result, _ = self._google_request(csrf=token)
-        self.assertEqual(status, 400, result)
-        assert_no_session_or_account()
+            # A valid body token cannot be used without its browser-bound cookie.
+            token = self._issue_google_csrf()
+            self.client.cookies.pop(self.auth.GOOGLE_CSRF_COOKIE_NAME)
+            status, result, _ = self._google_request(csrf=token)
+            self.assertEqual(status, 400, result)
+            assert_no_session_or_account()
 
-        # The cookie and body must contain the same signed server-issued token.
-        token = self._issue_google_csrf()
-        self.client.cookies[self.auth.GOOGLE_CSRF_COOKIE_NAME] = "different-cookie-token"
-        status, result, _ = self._google_request(csrf=token)
-        self.assertEqual(status, 400, result)
-        assert_no_session_or_account()
+            # The cookie and body must contain the same signed server-issued token.
+            token = self._issue_google_csrf()
+            self.client.cookies[self.auth.GOOGLE_CSRF_COOKIE_NAME] = token
+            status, result, _ = self._google_request(csrf="mismatched-test-token")
+            self.assertEqual(status, 400, result)
+            assert_no_session_or_account()
 
-        # Origin is still checked before credential verification or account creation.
-        status, result, _ = self._google_request(origin="https://untrusted.example")
-        self.assertEqual(status, 400, result)
-        self.assertIn("could not be validated", result["detail"])
-        assert_no_session_or_account()
+            # A matching but tampered cookie/body pair still fails the HMAC check.
+            token = self._issue_google_csrf()
+            body, signature = token.rsplit(".", 1)
+            tampered = body + "." + ("0" if signature[0] != "0" else "1") + signature[1:]
+            self.client.cookies[self.auth.GOOGLE_CSRF_COOKIE_NAME] = tampered
+            status, result, _ = self._google_request(csrf=tampered)
+            self.assertEqual(status, 400, result)
+            assert_no_session_or_account()
+
+            # A correctly signed token is rejected after its server-side expiry.
+            issued_at = int(self.auth.time.time())
+            token = self._issue_google_csrf()
+            with patch.object(
+                self.auth.time,
+                "time",
+                return_value=issued_at + self.auth.GOOGLE_CSRF_TTL + 1,
+            ):
+                status, result, _ = self._google_request(csrf=token)
+            self.assertEqual(status, 400, result)
+            assert_no_session_or_account()
+
+            # Origin is still checked before credential verification or account creation.
+            status, result, _ = self._google_request(origin="https://untrusted.example")
+            self.assertEqual(status, 400, result)
+            self.assertIn("could not be validated", result["detail"])
+            assert_no_session_or_account()
+            verify_credential.assert_not_called()
 
         with self._configured_google():
             for failure in (

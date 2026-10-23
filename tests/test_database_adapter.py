@@ -185,6 +185,7 @@ class DatabaseAdapterTests(unittest.TestCase):
             "users",
             "email_verification_tokens",
             "google_identities",
+            "auth_sessions",
             "saved_rides",
             "notifications",
             "team_rides",
