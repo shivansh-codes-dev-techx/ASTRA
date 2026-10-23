@@ -250,7 +250,9 @@ function LocationPicker({ id, label, value, onChange, placeholder }: {
 }
 
 function App() {
-  if (window.location.pathname.replace(/\/+$/, "") === "/login") {
+  const [path] = useLocation();
+
+  if (path.replace(/\/+$/, "") === "/login") {
     return <AuthPage />;
   }
 
