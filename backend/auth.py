@@ -19,9 +19,11 @@ DB_PATH = database.sqlite_database_path(
     Path(__file__).resolve().parent / "astra_users.db"
 )
 TOKEN_TTL = 60 * 60 * 24 * 7
+GOOGLE_CSRF_TTL = 60 * 10
 EMAIL_VERIFICATION_TTL = 60 * 30
 EMAIL_RESEND_COOLDOWN = 60
 COOKIE_NAME = "astra_session"
+GOOGLE_CSRF_COOKIE_NAME = "astra_google_csrf"
 RESEND_API_URL = "https://api.resend.com/emails"
 logger = logging.getLogger(__name__)
 
@@ -152,6 +154,33 @@ def create_token(user_id: int) -> str:
     return f"{body}.{signature}"
 
 
+def _create_google_csrf_token():
+    payload = {
+        "exp": int(time.time()) + GOOGLE_CSRF_TTL,
+        "nonce": secrets.token_urlsafe(32),
+    }
+    body = base64.urlsafe_b64encode(
+        json.dumps(payload, separators=(",", ":")).encode()
+    ).decode().rstrip("=")
+    signature = hmac.new(SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+    return f"{body}.{signature}"
+
+
+def _valid_google_csrf_token(cookie_token: str, submitted_token: str):
+    if not cookie_token or not hmac.compare_digest(cookie_token, submitted_token):
+        return False
+    try:
+        body, signature = cookie_token.rsplit(".", 1)
+        expected = hmac.new(SECRET.encode(), body.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(signature, expected):
+            return False
+        padded = body + "=" * (-len(body) % 4)
+        payload = json.loads(base64.urlsafe_b64decode(padded.encode()))
+        return int(payload["exp"]) > int(time.time())
+    except (ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return False
+
+
 def read_token(token: str):
     try:
         body, signature = token.rsplit(".", 1)
@@ -167,18 +196,21 @@ def read_token(token: str):
         return None
 
 
-def set_session_cookie(response: Response, user_id: int, request: Request):
+def _secure_cookie_setting(request: Request):
     configured_secure = os.getenv("ASTRA_COOKIE_SECURE")
-    secure = (
+    return (
         configured_secure.lower() == "true"
         if configured_secure is not None
         else request.url.hostname not in {"localhost", "127.0.0.1", "::1"}
     )
+
+
+def set_session_cookie(response: Response, user_id: int, request: Request):
     response.set_cookie(
         key=COOKIE_NAME,
         value=create_token(user_id),
         httponly=True,
-        secure=secure,
+        secure=_secure_cookie_setting(request),
         samesite="lax",
         max_age=TOKEN_TTL,
         path="/",
@@ -529,8 +561,8 @@ def google_login(data: GoogleLoginInput, request: Request, response: Response):
     if not expected_origin or request_origin != expected_origin:
         raise HTTPException(status_code=400, detail="Google sign-in request could not be validated.")
 
-    csrf_cookie = request.cookies.get("g_csrf_token", "")
-    if csrf_cookie and not hmac.compare_digest(csrf_cookie, data.csrf_token):
+    csrf_cookie = request.cookies.get(GOOGLE_CSRF_COOKIE_NAME, "")
+    if not _valid_google_csrf_token(csrf_cookie, data.csrf_token):
         raise HTTPException(status_code=400, detail="Google sign-in request could not be validated.")
     try:
         subject, email, name = _verify_google_credential(data.credential)
@@ -584,6 +616,13 @@ def google_login(data: GoogleLoginInput, request: Request, response: Response):
             identity = {"id": user_id, "email": email, "name": name}
 
     set_session_cookie(response, identity["id"], request)
+    response.delete_cookie(
+        key=GOOGLE_CSRF_COOKIE_NAME,
+        httponly=True,
+        secure=_secure_cookie_setting(request),
+        samesite="lax",
+        path="/",
+    )
     return {
         "message": "Google sign-in successful.",
         "user": {
@@ -592,6 +631,21 @@ def google_login(data: GoogleLoginInput, request: Request, response: Response):
             "name": identity["name"],
         },
     }
+
+
+@router.get("/google/csrf")
+def google_csrf(response: Response, request: Request):
+    token = _create_google_csrf_token()
+    response.set_cookie(
+        key=GOOGLE_CSRF_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=_secure_cookie_setting(request),
+        samesite="lax",
+        max_age=GOOGLE_CSRF_TTL,
+        path="/",
+    )
+    return {"csrf_token": token}
 
 
 @router.get("/me")

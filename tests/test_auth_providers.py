@@ -261,13 +261,32 @@ class AuthProviderTests(unittest.TestCase):
         }
         return patch.dict(sys.modules, modules), verifier
 
-    def _google_request(self, credential="a" * 40, csrf="csrf-token-for-tests"):
-        self.client.cookies["g_csrf_token"] = csrf
+    def _issue_google_csrf(self):
+        status, result, _ = self.client.request(
+            "GET",
+            "/auth/google/csrf",
+            headers={"origin": "https://astra.example.com"},
+        )
+        if status != 200:
+            raise AssertionError(f"CSRF token request failed: {result}")
+        return result["csrf_token"]
+
+    def _google_request(
+        self,
+        credential="a" * 40,
+        csrf=None,
+        origin="https://astra.example.com",
+        include_csrf=True,
+    ):
+        csrf_token = self._issue_google_csrf() if csrf is None else csrf
+        payload = {"credential": credential}
+        if include_csrf:
+            payload["csrf_token"] = csrf_token
         return self.client.request(
             "POST",
             "/auth/google",
-            {"credential": credential, "csrf_token": csrf},
-            headers={"origin": "https://astra.example.com"},
+            payload,
+            headers={"origin": origin},
         )
 
     def test_password_signup_is_unverified_and_email_provider_failure_is_explicit(self):
@@ -449,7 +468,59 @@ class AuthProviderTests(unittest.TestCase):
         send_email.assert_called_once()
         self.assertIn("Delivery is not confirmed", result["message"])
 
-    def test_invalid_google_credentials_and_untrusted_origin_are_rejected(self):
+    def test_google_csrf_token_cookie_is_http_only_secure_and_same_site(self):
+        status, result, headers = self.client.request(
+            "GET",
+            "/auth/google/csrf",
+            headers={"origin": "https://astra.example.com"},
+        )
+        self.assertEqual(status, 200, result)
+        self.assertGreaterEqual(len(result["csrf_token"]), 16)
+        self.assertIn(self.auth.GOOGLE_CSRF_COOKIE_NAME, self.client.cookies)
+        set_cookie = headers[b"set-cookie"].decode("latin-1").lower()
+        self.assertIn("httponly", set_cookie)
+        self.assertIn("secure", set_cookie)
+        self.assertIn("samesite=lax", set_cookie)
+        self.assertIn("path=/", set_cookie)
+
+    def test_google_login_rejects_missing_or_invalid_csrf_without_creating_session(self):
+        def assert_no_session_or_account():
+            self.assertNotIn(self.auth.COOKIE_NAME, self.client.cookies)
+            with self._connect() as db:
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM users").fetchone()[0],
+                    0,
+                )
+                self.assertEqual(
+                    db.execute("SELECT COUNT(*) FROM google_identities").fetchone()[0],
+                    0,
+                )
+
+        # Missing body token is rejected by input validation before the route runs.
+        status, result, _ = self._google_request(include_csrf=False)
+        self.assertEqual(status, 422, result)
+        assert_no_session_or_account()
+
+        # A valid body token cannot be used without its browser-bound cookie.
+        token = self._issue_google_csrf()
+        self.client.cookies.pop(self.auth.GOOGLE_CSRF_COOKIE_NAME)
+        status, result, _ = self._google_request(csrf=token)
+        self.assertEqual(status, 400, result)
+        assert_no_session_or_account()
+
+        # The cookie and body must contain the same signed server-issued token.
+        token = self._issue_google_csrf()
+        self.client.cookies[self.auth.GOOGLE_CSRF_COOKIE_NAME] = "different-cookie-token"
+        status, result, _ = self._google_request(csrf=token)
+        self.assertEqual(status, 400, result)
+        assert_no_session_or_account()
+
+        # Origin is still checked before credential verification or account creation.
+        status, result, _ = self._google_request(origin="https://untrusted.example")
+        self.assertEqual(status, 400, result)
+        self.assertIn("could not be validated", result["detail"])
+        assert_no_session_or_account()
+
         with self._configured_google():
             for failure in (
                 ValueError("invalid signature"),
@@ -462,16 +533,7 @@ class AuthProviderTests(unittest.TestCase):
                 self.assertEqual(status, 401, result)
                 verifier.assert_called_once()
                 self.assertEqual(verifier.call_args.kwargs["audience"], "client-id")
-
-        self.client.cookies["g_csrf_token"] = "different-cookie-token"
-        status, result, _ = self.client.request(
-            "POST",
-            "/auth/google",
-            {"credential": "a" * 40, "csrf_token": "csrf-token-for-tests"},
-            headers={"origin": "https://astra.example.com"},
-        )
-        self.assertEqual(status, 400)
-        self.assertIn("could not be validated", result["detail"])
+                assert_no_session_or_account()
 
         with self._configured_google(), patch.object(
             self.auth,
@@ -483,16 +545,7 @@ class AuthProviderTests(unittest.TestCase):
             status, result, _ = self._google_request()
         self.assertEqual(status, 503)
         self.assertIn("temporarily unavailable", result["detail"])
-
-        self.client.cookies.pop("g_csrf_token", None)
-        status, result, _ = self.client.request(
-            "POST",
-            "/auth/google",
-            {"credential": "a" * 40, "csrf_token": "csrf-token-for-tests"},
-            headers={"origin": "https://untrusted.example"},
-        )
-        self.assertEqual(status, 400)
-        self.assertIn("could not be validated", result["detail"])
+        assert_no_session_or_account()
 
     def test_google_identity_creates_and_reuses_account_without_email_linking(self):
         claims = {
@@ -512,6 +565,7 @@ class AuthProviderTests(unittest.TestCase):
         self.assertEqual(second["user"]["id"], first_user_id)
         self.assertEqual(second["user"]["name"], "Google Rider")
         self.assertIn(self.auth.COOKIE_NAME, self.client.cookies)
+        self.assertNotIn(self.auth.GOOGLE_CSRF_COOKIE_NAME, self.client.cookies)
         self.assertEqual(verifier.call_count, 2)
         with self._connect() as db:
             self.assertEqual(
