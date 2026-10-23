@@ -237,6 +237,24 @@
 .ride-row-actions { display: flex; align-items: center; gap: 4px; }
 .ride-row-actions .secondary-button { min-height: 32px; font-size: 10px; white-space: nowrap; }
 .rides-empty .secondary-button { margin-top: 12px; }
+.rides-loading-animation {
+  display: block;
+  width: 150px;
+  height: 150px;
+  max-width: 100%;
+  object-fit: contain;
+  margin: 0 auto 8px;
+}
+
+.rides-empty.rides-loading {
+  min-height: 220px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rides-loading-animation {
+    animation: none;
+  }
+}
 .unavailable-feature { max-width: 700px; }
 .assistant-status { display: flex; align-items: flex-start; gap: 12px; margin-bottom: 13px; }
 .assistant-symbol { color: #8a5d52; background: #f3e4df; }

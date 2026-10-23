@@ -1638,24 +1638,56 @@ function MyRidesPage() {
   const [filter, setFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
-  const [signedIn, setSignedIn] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
   const [localRides, setLocalRides] = useState<SavedRide[]>(() => getSavedRides());
 
+  
   async function refreshRides() {
     setLoading(true);
+    const loadingStartedAt = Date.now();
+
     try {
       const accountRides = await fetchAccountRides();
       setRides(accountRides);
       setSignedIn(true);
-      setMessage(accountRides.length ? "Your rides are synced to this ASTRA account." : "No rides saved to this account yet.");
+      setMessage(
+        accountRides.length
+          ? "Your rides are synced to this ASTRA account."
+          : "No rides saved to this account yet.",
+      );
     } catch (caught) {
       setRides([]);
-      setSignedIn(false);
-      setMessage(caught instanceof Error ? caught.message : "Could not load account rides.");
+
+      const errorMessage =
+        caught instanceof Error
+          ? caught.message
+          : "Could not load account rides.";
+
+      if (
+        errorMessage.includes(
+          "Please log in to view your account rides.",
+        )
+      ) {
+        setSignedIn(false);
+      } else {
+        setSignedIn(null);
+      }
+
+      setMessage(errorMessage);
     } finally {
+      const elapsed = Date.now() - loadingStartedAt;
+      const remaining = Math.max(0, 1000 - elapsed);
+
+      if (remaining > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, remaining),
+        );
+      }
+
       setLoading(false);
     }
   }
+
 
   useEffect(() => { void refreshRides(); }, []);
 
@@ -1705,16 +1737,47 @@ function MyRidesPage() {
   return (
     <main className="page inner-page">
       <PageHeading eyebrow="Your routes" title="A small ride log." description="Your account rides are stored by ASTRA's backend and are available when you sign in on another device. Browser-saved rides remain separate until you choose to copy them." icon={Bike} />
-      <Panel className="rides-panel" kicker={signedIn ? "Account storage" : "Sign-in required"} title="My rides">
+      <Panel
+        className="rides-panel"
+        kicker={loading || signedIn === null ? "Account status" : signedIn ? "Account storage" : "Sign-in required"}
+        title="My rides"
+      >
         <div className="rides-toolbar"><p>{loading ? "Loading…" : `${rides.length} ${rides.length === 1 ? "ride" : "rides"} in this account`}</p><label className="ride-filter"><Search size={15} /><span className="sr-only">Filter rides</span><input data-testid="input-filter-rides" value={filter} onChange={(event) => setFilter(event.target.value)} placeholder="Filter routes" /></label></div>
         {message && <p className="inline-message" role="status">{message}</p>}
         {signedIn && localRides.length > 0 && <div className="rides-toolbar"><p>{localRides.length} older ride{localRides.length === 1 ? "" : "s"} stored in this browser. Copy them without deleting the originals.</p><button className="secondary-button" type="button" disabled={busy || loading} onClick={() => void migrateLocalRides()}>{busy ? "Please wait…" : "Copy old rides to account"}</button></div>}
-        {!signedIn ? <div className="composed-empty rides-empty"><span className="empty-icon"><RouteIcon size={22} /></span><strong>Sign in to view your rides</strong><p>Account rides are private. Log in, then reopen this page. Existing browser rides have not been changed.</p><Link href="/login" className="secondary-button">Log in <ArrowRight size={14} /></Link></div> : visible.length === 0 ? <div className="composed-empty rides-empty"><span className="empty-icon"><RouteIcon size={22} /></span><strong>{rides.length ? "No routes match that search" : "No account rides saved yet"}</strong><p>{rides.length ? "Try another place name." : "Calculate a route in the planner, then save it to your account."}</p>{!rides.length && <Link href="/route-planner" className="secondary-button">Plan your first ride <ArrowRight size={14} /></Link>}</div> : <div className="rides-list">{visible.map((ride) => <article className="ride-row" key={ride.id}>
-          <div className="ride-icon"><RouteIcon size={18} /></div>
-          <div className="ride-info"><h3>{ride.name}</h3><p>{ride.plan.origin.country || "Route"} · {ride.rideDate ? `Ride date ${ride.rideDate}` : `Saved ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(ride.createdAt))}`}</p></div>
-          <div className="ride-facts"><strong>{formatDistance(ride.plan.distanceMeters)}</strong><small>{formatDuration(ride.plan.durationSeconds)}</small></div>
-          <div className="ride-row-actions"><button className="secondary-button" type="button" onClick={() => openRide(ride)}>Open route <ArrowRight size={14} /></button><button className="icon-button danger-icon" type="button" aria-label={`Delete ${ride.name}`} disabled={busy} onClick={() => void removeAccountRide(ride)}><Trash2 size={16} /></button></div>
-        </article>)}</div>}
+        {loading ? (
+          <div className="composed-empty rides-empty rides-loading" role="status" aria-live="polite">
+            <img
+               className="rides-loading-animation"
+               src="/animations/cycle.gif"
+               alt="Loading your rides"
+             />
+             <strong>Loading your rides…</strong>
+             <p>Checking your account and syncing your saved routes.</p>
+            </div>
+        ) : signedIn === false ? (
+          <div className="composed-empty rides-empty">
+            <span className="empty-icon"><RouteIcon size={22} /></span>
+            <strong>Sign in to view your rides</strong>
+            <p>Save routes while signed in to keep a synced ride log across devices.</p>
+          </div>
+        ) : visible.length ? (
+          <div className="ride-list">
+            {visible.map((ride) => (
+              <article key={ride.id} className="ride-row">
+                <div className="ride-info"><h3>{ride.name}</h3><p>{ride.plan.origin.country || "Route"} · {ride.rideDate ? `Ride date ${ride.rideDate}` : `Saved ${new Intl.DateTimeFormat(undefined, { dateStyle: "medium" }).format(new Date(ride.createdAt))}`}</p></div>
+                <div className="ride-facts"><strong>{formatDistance(ride.plan.distanceMeters)}</strong><small>{formatDuration(ride.plan.durationSeconds)}</small></div>
+                <div className="ride-row-actions"><button className="secondary-button" type="button" onClick={() => openRide(ride)}>Open route <ArrowRight size={14} /></button><button className="icon-button danger-icon" type="button" aria-label={`Delete ${ride.name}`} disabled={busy} onClick={() => void removeAccountRide(ride)}><Trash2 size={16} /></button></div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="composed-empty rides-empty">
+            <span className="empty-icon"><RouteIcon size={22} /></span>
+            <strong>No rides match your filter</strong>
+            <p>Try another route name or location to find the saved trip.</p>
+          </div>
+        )}
         <div className="rides-toolbar"><button className="secondary-button" type="button" disabled={loading || busy} onClick={() => void refreshRides()}><RefreshCw size={14} /> Refresh rides</button></div>
       </Panel>
       <div className="my-rides-support-grid">
