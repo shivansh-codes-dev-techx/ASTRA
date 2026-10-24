@@ -1,3 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
+
 from backend.saved_rides import router as saved_rides_router
 from backend.auth import router as auth_router
 from fastapi import FastAPI, HTTPException

@@ -306,30 +306,34 @@ def current_user(request: Request):
 
 
 def _email_configuration():
-    api_key = os.getenv("RESEND_API_KEY", "").strip()
-    sender = os.getenv("ASTRA_EMAIL_FROM", "").strip()
+    api_key = os.getenv("SENDLIBERTY_API_KEY", "").strip()
+    sender = os.getenv("SENDLIBERTY_EMAIL_FROM", "").strip()
     public_url = os.getenv("ASTRA_PUBLIC_URL", "").strip()
+
     missing = [
         name
         for name, value in (
-            ("RESEND_API_KEY", api_key),
-            ("ASTRA_EMAIL_FROM", sender),
+            ("SENDLIBERTY_API_KEY", api_key),
+            ("SENDLIBERTY_EMAIL_FROM", sender),
             ("ASTRA_PUBLIC_URL", public_url),
         )
         if not value
     ]
     if missing:
         logger.error(
-            "Resend verification email not configured; missing variables: %s",
+            "Sendliberty verification email not configured; "
+            "missing variables: %s",
             ", ".join(missing),
         )
         raise ProviderUnavailable("Email verification is not configured.")
+
     parsed = urlparse(public_url)
     local_http = parsed.hostname in {"localhost", "127.0.0.1", "::1"}
     if parsed.scheme != "https" and not (
         parsed.scheme == "http" and local_http
     ):
         raise ProviderUnavailable("Email verification URL must use HTTPS.")
+
     if (
         not parsed.netloc
         or parsed.username
@@ -338,19 +342,21 @@ def _email_configuration():
         or parsed.fragment
     ):
         raise ProviderUnavailable("Email verification URL is invalid.")
+
     return api_key, sender, public_url.rstrip("/")
 
 
 def _send_verification_email(email: str, token: str):
     api_key, sender, public_url = _email_configuration()
     verification_url = f"{public_url}/login#verify-email={token}"
+
     try:
         result = requests.post(
-            RESEND_API_URL,
+            "https://sendliberty.com/api/send",
             headers={"Authorization": f"Bearer {api_key}"},
             json={
                 "from": sender,
-                "to": [email],
+                "to": email,
                 "subject": "Verify your ASTRA account",
                 "html": (
                     "<p>Verify your ASTRA email address:</p>"
@@ -363,20 +369,33 @@ def _send_verification_email(email: str, token: str):
         )
     except requests.RequestException as exc:
         logger.error(
-            "Resend verification request failed (%s)",
+            "Sendliberty verification request failed (%s)",
             type(exc).__name__,
         )
         raise ProviderUnavailable("Verification email could not be sent.") from exc
+
     if not 200 <= result.status_code < 300:
         logger.error(
-            "Resend rejected verification email request (HTTP %s)",
+            "Sendliberty rejected verification email request (HTTP %s)",
             result.status_code,
         )
         raise ProviderUnavailable("Verification email could not be sent.")
+
+    try:
+        payload = result.json()
+    except ValueError as exc:
+        logger.error("Sendliberty returned an invalid JSON response.")
+        raise ProviderUnavailable("Verification email could not be sent.") from exc
+
+    if payload.get("success") is not True:
+        logger.error("Sendliberty did not accept the verification email.")
+        raise ProviderUnavailable("Verification email could not be sent.")
+
     logger.info(
-        "Resend accepted verification email request (HTTP %s)",
+        "Sendliberty accepted verification email request (HTTP %s)",
         result.status_code,
     )
+
 
 
 def _new_verification_token():
