@@ -295,7 +295,10 @@ def get_weather(latitude: float, longitude: float):
         provider = "open-meteo"
 
     except Exception as error:
-        print(f"Open-Meteo failed ({type(error).__name__})")
+        print(
+            f"Open-Meteo failed: "
+            f"{type(error).__name__}: {error}"
+        )
 
     # 3. Fall back to WeatherAPI
     if weather_data is None:
