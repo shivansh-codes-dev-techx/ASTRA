@@ -303,6 +303,18 @@ def _postgres_schema_statements():
         )
         """,
         """
+        CREATE TABLE IF NOT EXISTS pending_signups (
+            email TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            password_hash TEXT NOT NULL,
+            created_at BIGINT NOT NULL,
+            email_verification_last_sent_at BIGINT NOT NULL DEFAULT 0,
+            token_hash TEXT UNIQUE,
+            expires_at BIGINT,
+            last_sent_at BIGINT
+        )
+        """,
+        """
         CREATE INDEX IF NOT EXISTS idx_auth_sessions_user
         ON auth_sessions(user_id)
         """,

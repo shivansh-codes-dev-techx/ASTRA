@@ -182,16 +182,23 @@ class AuthProviderTests(unittest.TestCase):
         return patch.dict(
             "os.environ",
             {
-                "RESEND_API_KEY": "re_test_placeholder",
-                "ASTRA_EMAIL_FROM": "ASTRA <test@example.com>",
+                "SENDLIBERTY_API_KEY": "sendliberty_test_placeholder",
+                "SENDLIBERTY_EMAIL_FROM": "ASTRA <test@example.com>",
                 "ASTRA_PUBLIC_URL": "https://astra.example.com",
             },
         )
 
     def _mock_resend(self, token_holder):
         def send(_url, *, json, **_kwargs):
-            token_holder.append(json["html"].split("verify-email=")[1].split('"')[0])
-            return types.SimpleNamespace(status_code=200)
+            token_holder.append(
+                json["html"].split("verify-email=")[1].split('"')[0]
+            )
+            return types.SimpleNamespace(
+                status_code=200,
+                json=lambda: {"success": True},
+                text="",
+                headers={},
+            )
 
         return patch.object(self.auth.requests, "post", side_effect=send)
 
@@ -200,7 +207,12 @@ class AuthProviderTests(unittest.TestCase):
 
         def accepted(url, *, headers, json, **_kwargs):
             requests_sent.append((url, headers, json))
-            return types.SimpleNamespace(status_code=200)
+            return types.SimpleNamespace(
+                status_code=200,
+                json=lambda: {"success": True},
+                text="",
+                headers={},
+            )
 
         with self._configured_email(), patch.object(
             self.auth.requests, "post", side_effect=accepted
@@ -211,9 +223,12 @@ class AuthProviderTests(unittest.TestCase):
             )
 
         url, headers, payload = requests_sent[0]
-        self.assertEqual(url, self.auth.RESEND_API_URL)
-        self.assertEqual(headers["Authorization"], "Bearer re_test_placeholder")
-        self.assertEqual(payload["to"], ["rider@example.com"])
+        self.assertEqual(url, "https://sendliberty.com/api/send")
+        self.assertEqual(
+            headers["Authorization"],
+            "Bearer sendliberty_test_placeholder",
+        )
+        self.assertEqual(payload["to"], "rider@example.com")
         self.assertIn(
             "https://astra.example.com/login#verify-email=verification-token-for-test",
             payload["html"],
@@ -225,7 +240,12 @@ class AuthProviderTests(unittest.TestCase):
         with self._configured_email(), patch.object(
             self.auth.requests,
             "post",
-            return_value=types.SimpleNamespace(status_code=422),
+            return_value=types.SimpleNamespace(
+                status_code=422,
+                json=lambda: {"success": False},
+                text="rejected",
+                headers={},
+            ),
         ), self.assertLogs(self.auth.__name__, level="ERROR") as failed_logs:
             with self.assertRaises(self.auth.ProviderUnavailable):
                 self.auth._send_verification_email(
@@ -303,84 +323,123 @@ class AuthProviderTests(unittest.TestCase):
     def test_password_signup_is_unverified_and_email_provider_failure_is_explicit(self):
         with patch.dict("os.environ", {}, clear=False):
             for name in (
-                "RESEND_API_KEY",
-                "ASTRA_EMAIL_FROM",
+                "SENDLIBERTY_API_KEY",
+                "SENDLIBERTY_EMAIL_FROM",
                 "ASTRA_PUBLIC_URL",
             ):
                 os.environ.pop(name, None)
+
             with self.assertLogs(self.auth.__name__, level="ERROR") as logs:
                 status, result, _ = self._signup()
 
         self.assertEqual(status, 503)
-        self.assertIn("RESEND_API_KEY", "\n".join(logs.output))
-        self.assertNotIn("re_test_placeholder", "\n".join(logs.output))
-        self.assertTrue(result["detail"].startswith("Your account was created"))
+        self.assertIn("SENDLIBERTY_API_KEY", "\n".join(logs.output))
+        self.assertNotIn("sendliberty_test_placeholder", "\n".join(logs.output))
         self.assertFalse(self.client.cookies)
+
         with self._connect() as db:
-            user = db.execute(
-                "SELECT email_verified FROM users WHERE email = ?",
+            user_count = db.execute(
+                "SELECT COUNT(*) FROM users WHERE email = ?",
+                ("rider@example.com",),
+            ).fetchone()[0]
+            pending = db.execute(
+                "SELECT token_hash FROM pending_signups WHERE email = ?",
                 ("rider@example.com",),
             ).fetchone()
             token_count = db.execute(
                 "SELECT COUNT(*) FROM email_verification_tokens"
             ).fetchone()[0]
-        self.assertEqual(user["email_verified"], 0)
+
+        self.assertEqual(user_count, 0)
+        self.assertIsNotNone(pending)
+        self.assertIsNone(pending["token_hash"])
         self.assertEqual(token_count, 0)
+        self.assertNotIn("test-password-123", result["detail"])
 
         with self._configured_email(), patch.object(
             self.auth.requests,
             "post",
             side_effect=self.auth.requests.RequestException("provider unavailable"),
-        ), self.assertLogs(self.auth.__name__, level="ERROR") as logs:
+        ), self.assertLogs(self.auth.__name__, level="ERROR") as failure_logs:
             failure_status, failure, _ = self._signup("failed@example.com")
+
         self.assertEqual(failure_status, 503)
-        self.assertIn("RequestException", "\n".join(logs.output))
+        self.assertIn("RequestException", "\n".join(failure_logs.output))
         self.assertNotIn("provider unavailable", failure["detail"])
         self.assertFalse(self.client.cookies)
+
+        with self._connect() as db:
+            failed_user_count = db.execute(
+                "SELECT COUNT(*) FROM users WHERE email = ?",
+                ("failed@example.com",),
+            ).fetchone()[0]
+
+        self.assertEqual(failed_user_count, 0)
 
     def test_valid_email_token_verifies_once_and_login_keeps_session_contract(self):
         issued_tokens = []
         with self._configured_email(), self._mock_resend(issued_tokens):
             status, result, _ = self._signup()
+
         self.assertEqual(status, 201, result)
         self.assertTrue(result["verification_pending"])
-        self.assertEqual(
-            result["message"],
-            "Account created. Check your email to verify your account before signing in.",
-        )
+        self.assertIn("spam folder", result["message"].lower())
         self.assertFalse(self.client.cookies)
+
+        # Before verification, the account must exist only in pending_signups.
         with self._connect() as db:
-            user = db.execute(
-                "SELECT id, email_verified FROM users WHERE email = ?",
+            user_count = db.execute(
+                "SELECT COUNT(*) FROM users WHERE email = ?",
+                ("rider@example.com",),
+            ).fetchone()[0]
+            pending = db.execute(
+                "SELECT email, name, password_hash, token_hash "
+                "FROM pending_signups WHERE email = ?",
                 ("rider@example.com",),
             ).fetchone()
-            stored_hash = db.execute(
-                "SELECT token_hash FROM email_verification_tokens WHERE user_id = ?",
-                (user["id"],),
-            ).fetchone()["token_hash"]
-        self.assertEqual(user["email_verified"], 0)
+
+        self.assertEqual(user_count, 0)
+        self.assertIsNotNone(pending)
+        self.assertEqual(pending["name"], "Test Rider")
         self.assertEqual(
-            stored_hash,
+            pending["token_hash"],
             self.auth.hashlib.sha256(issued_tokens[0].encode()).hexdigest(),
         )
 
+        # An unverified pending signup must not be able to log in.
         status, login_result, _ = self.client.request(
             "POST",
             "/auth/login",
             {"email": "rider@example.com", "password": "test-password-123"},
         )
-        self.assertEqual(status, 403, login_result)
+        self.assertIn(status, (401, 403), login_result)
         self.assertFalse(self.client.cookies)
 
+        # A valid token creates the permanent account and consumes the token.
         status, verified, _ = self.client.request(
             "POST", "/auth/verify-email", {"token": issued_tokens[0]}
         )
         self.assertEqual(status, 200, verified)
+
+        with self._connect() as db:
+            user = db.execute(
+                "SELECT id, email_verified FROM users WHERE email = ?",
+                ("rider@example.com",),
+            ).fetchone()
+            pending_count = db.execute(
+                "SELECT COUNT(*) FROM pending_signups WHERE email = ?",
+                ("rider@example.com",),
+            ).fetchone()[0]
+
+        self.assertIsNotNone(user)
+        self.assertEqual(user["email_verified"], 1)
+        self.assertEqual(pending_count, 0)
+
         status, reused, _ = self.client.request(
             "POST", "/auth/verify-email", {"token": issued_tokens[0]}
         )
         self.assertEqual(status, 400)
-        self.assertIn("invalid or expired", reused["detail"])
+        self.assertIn("invalid or expired", reused["detail"].lower())
 
         status, login_result, login_headers = self.client.request(
             "POST",
@@ -395,6 +454,7 @@ class AuthProviderTests(unittest.TestCase):
         self.assertIn("secure", cookie_attributes)
         self.assertIn("samesite=lax", cookie_attributes)
         self.assertIn("path=/", cookie_attributes)
+
         status, me_result, _ = self.client.request("GET", "/auth/me")
         self.assertEqual(status, 200)
         self.assertEqual(me_result["user"]["name"], "Test Rider")
@@ -577,7 +637,7 @@ class AuthProviderTests(unittest.TestCase):
 
         with self._connect() as db:
             db.execute(
-                "UPDATE email_verification_tokens SET expires_at = 1"
+                "UPDATE pending_signups SET expires_at = 1"
             )
         status, expired, _ = self.client.request(
             "POST", "/auth/verify-email", {"token": issued_tokens[0]}
@@ -605,38 +665,128 @@ class AuthProviderTests(unittest.TestCase):
         )
         self.assertEqual(unknown_status, 202)
         self.assertEqual(unknown["message"], result["message"])
+    def test_resend_provider_failure_allows_retry(self):
+        issued_tokens = []
+
+        with self._configured_email(), self._mock_resend(issued_tokens):
+            status, result, _ = self._signup()
+
+        self.assertEqual(status, 201, result)
+        self.assertEqual(len(issued_tokens), 1)
+        with self._connect() as db:
+            db.execute(
+                """
+                UPDATE pending_signups
+                SET last_sent_at = 0
+                WHERE email = ?
+                """,
+                ("rider@example.com",),
+            )
+        with self._configured_email(), patch.object(
+            self.auth,
+            "_send_verification_email",
+            side_effect=self.auth.ProviderUnavailable(
+                "provider unavailable"
+            ),
+        ):
+            status, result, _ = self.client.request(
+                "POST",
+                "/auth/resend-verification",
+                {"email": "rider@example.com"},
+            )
+
+        self.assertEqual(status, 202, result)
+
+        with self._connect() as db:
+            pending = db.execute(
+                """
+                SELECT token_hash, expires_at, last_sent_at
+                FROM pending_signups
+                WHERE email = ?
+                """,
+                ("rider@example.com",),
+            ).fetchone()
+
+        self.assertIsNotNone(pending)
+        self.assertIsNone(pending["token_hash"])
+        self.assertIsNone(pending["expires_at"])
+        self.assertIsNone(pending["last_sent_at"])
+
+        retry_tokens = []
+        with self._configured_email(), self._mock_resend(retry_tokens):
+            retry_status, retry_result, _ = self.client.request(
+                "POST",
+                "/auth/resend-verification",
+                {"email": "rider@example.com"},
+            )
+
+        self.assertEqual(retry_status, 202, retry_result)
+        self.assertEqual(len(retry_tokens), 1)
+
+        with self._connect() as db:
+            pending_after_retry = db.execute(
+                """
+                SELECT token_hash, expires_at, last_sent_at
+                FROM pending_signups
+                WHERE email = ?
+                """,
+                ("rider@example.com",),
+            ).fetchone()
+
+        self.assertIsNotNone(pending_after_retry)
+        self.assertIsNotNone(pending_after_retry["token_hash"])
+        self.assertIsNotNone(pending_after_retry["expires_at"])
+        self.assertIsNotNone(pending_after_retry["last_sent_at"])
 
     def test_postgres_verification_locks_token_row(self):
         db = MagicMock()
         db.__enter__.return_value = db
         selected_row = MagicMock()
         selected_row.fetchone.return_value = {
-            "user_id": 7,
+            "email": "rider@example.com",
+            "name": "Test Rider",
+            "password_hash": "test-password-hash",
+            "created_at": int(time.time()),
+            "email_verification_last_sent_at": int(time.time()),
             "expires_at": int(time.time()) + 60,
         }
-        db.execute.side_effect = [MagicMock(), selected_row, MagicMock(), MagicMock()]
+        db.execute.side_effect = [
+            MagicMock(),
+            selected_row,
+            MagicMock(),
+            MagicMock(),
+        ]
 
         with patch.object(self.auth, "connect_db", return_value=db), patch.object(
             self.auth.database, "is_postgres", return_value=True
         ):
             result = self.auth.verify_email(
-                self.auth.VerifyEmailInput(token="verification-token-" + "x" * 32)
+                self.auth.VerifyEmailInput(
+                    token="verification-token-" + "x" * 32
+                )
             )
 
         verification_query = db.execute.call_args_list[1].args[0]
         self.assertIn("FOR UPDATE", verification_query)
-        self.assertEqual(result, {"message": "Email verified. You can now sign in."})
+        self.assertEqual(
+            result,
+            {"message": "Email verified successfully. You can now sign in."},
+        )
 
     def test_postgres_resend_locks_user_row_before_cooldown_check(self):
         db = MagicMock()
         db.__enter__.return_value = db
         selected_row = MagicMock()
         selected_row.fetchone.return_value = {
-            "id": 7,
-            "email_verified": 0,
-            "email_verification_last_sent_at": 0,
+            "email": "rider@example.com",
+            "token_hash": None,
+            "last_sent_at": None,
         }
-        db.execute.side_effect = [MagicMock(), selected_row, MagicMock(), MagicMock()]
+        db.execute.side_effect = [
+            MagicMock(),
+            selected_row,
+            MagicMock(),
+        ]
 
         with patch.object(self.auth, "connect_db", return_value=db), patch.object(
             self.auth.database, "is_postgres", return_value=True

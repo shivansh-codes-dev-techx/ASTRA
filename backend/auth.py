@@ -108,6 +108,18 @@ def init_db():
             )
         """)
         db.execute("""
+            CREATE TABLE IF NOT EXISTS pending_signups (
+                email TEXT PRIMARY KEY,
+                name TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                email_verification_last_sent_at INTEGER NOT NULL DEFAULT 0,
+                token_hash TEXT UNIQUE,
+                expires_at INTEGER,
+                last_sent_at INTEGER
+            )
+        """)
+        db.execute("""
             CREATE TABLE IF NOT EXISTS google_identities (
                 google_sub TEXT PRIMARY KEY,
                 user_id INTEGER NOT NULL UNIQUE,
@@ -483,134 +495,246 @@ def auth_config():
             client_id if client_id and _configured_public_origin() else None
         )
     }
-
-
 @router.post("/signup", status_code=201)
 def signup(data: SignupInput):
     email = str(data.email).strip().lower()
     name = " ".join(data.name.split())
     if len(name) < 2:
-        raise HTTPException(status_code=422, detail="Please enter your full name.")
+        raise HTTPException(
+            status_code=422,
+            detail="Please enter your full name.",
+        )
 
     token, token_hash = _new_verification_token()
     now = int(time.time())
     try:
         with connect_db() as db:
             db.execute("BEGIN IMMEDIATE")
-            user_id = database.insert_returning_id(
-                db,
-                """
-                INSERT INTO users (
-                    name, email, password_hash, created_at, email_verified,
-                    email_verification_last_sent_at
-                ) VALUES (?, ?, ?, ?, 0, ?)
-                """,
-                (name, email, hash_password(data.password), now, now),
-            )
+
+            existing_user = db.execute(
+                "SELECT id FROM users WHERE email = ?",
+                (email,),
+            ).fetchone()
+
+            if existing_user is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail="An account with this email already exists.",
+                )
+
+            existing_pending = db.execute(
+                "SELECT email FROM pending_signups WHERE email = ?",
+                (email,),
+            ).fetchone()
+
+            if existing_pending is not None:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        "Verification is already pending for this email. "
+                        "Request another verification email."
+                    ),
+                    headers={"X-ASTRA-Verification-Pending": "true"},
+                )
+
             db.execute(
                 """
-                INSERT INTO email_verification_tokens
-                    (user_id, token_hash, expires_at, last_sent_at)
-                VALUES (?, ?, ?, ?)
+                INSERT INTO pending_signups (
+                    email, name, password_hash, created_at,
+                    email_verification_last_sent_at,
+                    token_hash, expires_at, last_sent_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
                 """,
-                (user_id, token_hash, now + EMAIL_VERIFICATION_TTL, now),
+                (
+                    email,
+                    name,
+                    hash_password(data.password),
+                    now,
+                    now,
+                    token_hash,
+                    now + EMAIL_VERIFICATION_TTL,
+                    now,
+                ),
             )
+
     except database.integrity_error_types() as exc:
         if not database.is_unique_violation(exc):
             raise
+
         raise HTTPException(
             status_code=409,
-            detail="An account with this email already exists.",
+            detail=(
+                "An account or pending registration already exists "
+                "for this email."
+            ),
         ) from exc
 
     try:
         _send_verification_email(email, token)
+
     except ProviderUnavailable as exc:
         with connect_db() as db:
             db.execute(
                 """
-                DELETE FROM email_verification_tokens
-                WHERE user_id = ? AND token_hash = ?
+                UPDATE pending_signups
+                SET token_hash = NULL,
+                    expires_at = NULL,
+                    last_sent_at = NULL
+                WHERE email = ? AND token_hash = ?
                 """,
-                (user_id, token_hash),
+                (email, token_hash),
             )
+
         raise HTTPException(
             status_code=503,
-            detail="Your account was created but email verification could not be sent. Request another verification email.",
+            detail=(
+                "Your registration is pending, but the verification "
+                "email could not be sent. Request another verification email."
+            ),
             headers={"X-ASTRA-Verification-Pending": "true"},
         ) from exc
 
     return {
-        "message": "Account created. Check your email to verify your account before signing in.",
+        "message": (
+            "Registration received. Check your email to verify "
+            "your account before signing in. Also check your spam folder."
+        ),
         "verification_pending": True,
         "email": email,
-        "user": {"id": user_id, "email": email, "name": name},
+        "user": {
+            "email": email,
+            "name": name,
+        },
     }
+
+
 
 
 @router.post("/verify-email")
 def verify_email(data: VerifyEmailInput):
-    token_hash = hashlib.sha256(data.token.encode("utf-8")).hexdigest()
+    token_hash = hashlib.sha256(
+        data.token.encode("utf-8")
+    ).hexdigest()
     now = int(time.time())
-    with connect_db() as db:
-        db.execute("BEGIN IMMEDIATE")
-        row = db.execute(
-            """
-            SELECT user_id, expires_at FROM email_verification_tokens
-            WHERE token_hash = ?
-            """ + (" FOR UPDATE" if database.is_postgres() else ""),
-            (token_hash,),
-        ).fetchone()
-        if row is None or int(row["expires_at"]) <= now:
-            raise HTTPException(status_code=400, detail="Verification link is invalid or expired.")
-        db.execute(
-            "UPDATE users SET email_verified = 1 WHERE id = ?",
-            (row["user_id"],),
-        )
-        db.execute(
-            "DELETE FROM email_verification_tokens WHERE user_id = ?",
-            (row["user_id"],),
-        )
-    return {"message": "Email verified. You can now sign in."}
+
+    try:
+        with connect_db() as db:
+            db.execute("BEGIN IMMEDIATE")
+
+            pending = db.execute(
+                """
+                SELECT email, name, password_hash, created_at,
+                       email_verification_last_sent_at, expires_at
+                FROM pending_signups
+                WHERE token_hash = ?
+                """ + (" FOR UPDATE" if database.is_postgres() else ""),
+                (token_hash,),
+            ).fetchone()
+
+            if (
+                pending is None
+                or pending["expires_at"] is None
+                or int(pending["expires_at"]) <= now
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="Verification link is invalid or expired.",
+                )
+
+            db.execute(
+                """
+                INSERT INTO users (
+                    name, email, password_hash, created_at,
+                    email_verified, email_verification_last_sent_at
+                ) VALUES (?, ?, ?, ?, 1, ?)
+                """,
+                (
+                    pending["name"],
+                    pending["email"],
+                    pending["password_hash"],
+                    pending["created_at"],
+                    pending["email_verification_last_sent_at"],
+                ),
+            )
+
+            db.execute(
+                "DELETE FROM pending_signups WHERE email = ?",
+                (pending["email"],),
+            )
+
+    except database.integrity_error_types() as exc:
+        if not database.is_unique_violation(exc):
+            raise
+
+        raise HTTPException(
+            status_code=409,
+            detail="An account with this email already exists. Please sign in.",
+        ) from exc
+
+    return {
+        "message": "Email verified successfully. You can now sign in."
+    }
+
+
 
 
 @router.post("/resend-verification", status_code=202)
 def resend_verification(data: EmailInput):
     email = str(data.email).strip().lower()
     now = int(time.time())
+
+    generic_response = {
+        "message": (
+            "If this address belongs to a pending account and delivery "
+            "is available, a verification email will be sent. "
+            "Delivery is not confirmed by this response."
+        )
+    }
+
+    token, token_hash = _new_verification_token()
+
     with connect_db() as db:
         db.execute("BEGIN IMMEDIATE")
-        user = db.execute(
+
+        pending = db.execute(
             """
-            SELECT id, email_verified, email_verification_last_sent_at
-            FROM users WHERE email = ?
+            SELECT email, token_hash, last_sent_at
+            FROM pending_signups
+            WHERE email = ?
             """ + (" FOR UPDATE" if database.is_postgres() else ""),
             (email,),
         ).fetchone()
-        if user is None or user["email_verified"]:
-            return {
-                "message": "If this address belongs to a pending account and delivery is available, a verification email will be sent. Delivery is not confirmed by this response."
-            }
-        if now - int(user["email_verification_last_sent_at"]) < EMAIL_RESEND_COOLDOWN:
-            return {
-                "message": "If this address belongs to a pending account and delivery is available, a verification email will be sent. Delivery is not confirmed by this response."
-            }
-        token, token_hash = _new_verification_token()
-        db.execute(
-            "UPDATE users SET email_verification_last_sent_at = ? WHERE id = ?",
-            (now, user["id"]),
-        )
+
+        if pending is None:
+            return generic_response
+
+        previous_sent_at = pending["last_sent_at"]
+
+        # Enforce the cooldown after a successful provider submission.
+        # If sending previously failed, token_hash is NULL and retry is allowed.
+        if (
+            pending["token_hash"] is not None
+            and previous_sent_at is not None
+            and now - int(previous_sent_at) < EMAIL_RESEND_COOLDOWN
+        ):
+            return generic_response
+
         db.execute(
             """
-            INSERT INTO email_verification_tokens
-                (user_id, token_hash, expires_at, last_sent_at)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(user_id) DO UPDATE SET
-                token_hash = excluded.token_hash,
-                expires_at = excluded.expires_at,
-                last_sent_at = excluded.last_sent_at
+            UPDATE pending_signups
+            SET token_hash = ?,
+                expires_at = ?,
+                last_sent_at = ?,
+                email_verification_last_sent_at = ?
+            WHERE email = ?
             """,
-            (user["id"], token_hash, now + EMAIL_VERIFICATION_TTL, now),
+            (
+                token_hash,
+                now + EMAIL_VERIFICATION_TTL,
+                now,
+                now,
+                email,
+            ),
         )
 
     try:
@@ -618,12 +742,18 @@ def resend_verification(data: EmailInput):
     except ProviderUnavailable:
         with connect_db() as db:
             db.execute(
-                "DELETE FROM email_verification_tokens WHERE user_id = ? AND token_hash = ?",
-                (user["id"], token_hash),
+                """
+                UPDATE pending_signups
+                SET token_hash = NULL,
+                    expires_at = NULL,
+                    last_sent_at = NULL
+                WHERE email = ? AND token_hash = ?
+                """,
+                (email, token_hash),
             )
-    return {
-        "message": "If this address belongs to a pending account and delivery is available, a verification email will be sent. Delivery is not confirmed by this response."
-    }
+
+    return generic_response
+
 
 
 @router.post("/login")
