@@ -1,0 +1,5 @@
+
+User-agent: *
+Allow: /
+
+Sitemap: https://astra-opal-delta.vercel.app/sitemap.xml
