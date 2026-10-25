@@ -12,7 +12,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from fastapi import FastAPI
-
+from backend import database
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 PRODUCTION_DATABASE = (PROJECT_ROOT / "backend" / "astra_users.db").resolve()
@@ -92,6 +92,10 @@ class IsolatedASGIClient:
 class AuthenticatedPrivateJoinEndToEndTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        cls._database_patch = patch.object(
+            database, "is_postgres", return_value=False
+        )
+        cls._database_patch.start()
         cls._temp_dir = tempfile.TemporaryDirectory(
             prefix="astra-authenticated-join-e2e-"
         )
@@ -114,11 +118,13 @@ class AuthenticatedPrivateJoinEndToEndTests(unittest.TestCase):
         previous_backend_auth = sys.modules.get("backend.auth")
         sqlite3.connect = isolated_connect
         try:
-            cls.auth = cls._load_module("auth")
-            sys.modules["backend.auth"] = cls.auth
-            cls.rides = cls._load_module("rides")
-            cls.team_rides = cls._load_module("team_rides")
-            cls.notifications = cls._load_module("notifications")
+            with patch.dict("os.environ", {"DATABASE_URL": ""}):
+                with patch.object(database, "is_postgres", return_value=False):
+                    cls.auth = cls._load_module("auth")
+                    sys.modules["backend.auth"] = cls.auth
+                    cls.rides = cls._load_module("rides")
+                    cls.team_rides = cls._load_module("team_rides")
+                    cls.notifications = cls._load_module("notifications")
         finally:
             sqlite3.connect = original_connect
             if previous_backend_auth is None:
@@ -147,6 +153,7 @@ class AuthenticatedPrivateJoinEndToEndTests(unittest.TestCase):
         ):
             sys.modules.pop(module_name, None)
         cls._temp_dir.cleanup()
+        cls._database_patch.stop()
 
     @classmethod
     def _load_module(cls, module_name):
@@ -183,7 +190,10 @@ class AuthenticatedPrivateJoinEndToEndTests(unittest.TestCase):
         def send_verification(_url, *, json, **_kwargs):
             token = json["html"].split("#verify-email=")[1].split('"')[0]
             verification_tokens.append(token)
-            return types.SimpleNamespace(status_code=200)
+            return types.SimpleNamespace(
+                status_code=200,
+                json=lambda: {"success": True, "id": "test-email-id"},
+            )
 
         with patch.dict(
             "os.environ",
@@ -331,7 +341,10 @@ class AuthenticatedPrivateJoinEndToEndTests(unittest.TestCase):
         def send_verification(_url, *, json, **_kwargs):
             token = json["html"].split("#verify-email=")[1].split('"')[0]
             verification_tokens.append(token)
-            return types.SimpleNamespace(status_code=200)
+            return types.SimpleNamespace(
+                status_code=200,
+                json=lambda: {"success": True, "id": "test-email-id"},
+            )
 
         test_users = (
             (creator, "Clear Test Creator", "clear.creator@example.com"),

@@ -556,31 +556,55 @@ async function initializeGoogle() {
   }
 }
 
+
+
 if (verificationToken) {
-  $('#verify-email-button').hidden = false;
-  status($('#s-login'), 'Confirm your email verification below to continue.', '');
-  $('#verify-email-button').addEventListener('click', async event => {
-    const button = event.currentTarget;
-    button.disabled = true;
+  $('#verify-email-button').hidden = true;
+  $('#p-signup').hidden = true;
+  $('#p-login').hidden = false;
+
+  status($('#s-login'), 'Verifying your email…', '');
+
+  (async () => {
     try {
       const response = await apiRequest('/auth/verify-email', {
         method: 'POST',
         body: JSON.stringify({ token: verificationToken })
       });
+
       const result = await response.json().catch(() => ({}));
-      if (!response.ok) throw new Error(result.detail || 'This verification link is invalid or expired.');
-      status($('#s-login'), result.message, 'ok');
-      button.hidden = true;
+
+      if (!response.ok) {
+        throw new Error(
+          result.detail || 'This verification link is invalid or expired.'
+        );
+      }
+
+      status(
+        $('#s-login'),
+        'Email verified successfully. You can now sign in.',
+        'ok'
+      );
+
+      // Remove the one-time token from the browser address bar.
       const cleanUrl = new URL(window.top.location.href);
       cleanUrl.searchParams.delete('verify_email');
       cleanUrl.hash = '';
       window.top.history.replaceState(null, '', cleanUrl);
+
+      // Make signing in the next obvious step.
+      $('#l-email').focus();
+
     } catch (error) {
-      status($('#s-login'), error instanceof Error ? error.message : 'Email verification failed.', 'bad');
-    } finally {
-      button.disabled = false;
+      status(
+        $('#s-login'),
+        error instanceof Error
+          ? error.message
+          : 'Email verification failed. Request a new verification email if needed.',
+        'bad'
+      );
     }
-  });
+  })();
 }
 
 initializeGoogle();

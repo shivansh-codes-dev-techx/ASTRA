@@ -90,7 +90,7 @@ class PrivateJoinNotificationTests(unittest.TestCase):
     def setUp(self):
         self.database_path = Path(self._temp_dir.name) / f"{self._testMethodName}.db"
         self.connect_calls = []
-
+        self.team_rides.database.is_postgres = lambda: False
         for module in (self.rides, self.team_rides):
             module.DB_PATH = self.database_path
 

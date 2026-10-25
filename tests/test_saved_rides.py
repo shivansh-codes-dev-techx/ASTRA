@@ -14,7 +14,12 @@ from starlette.requests import Request
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 MODULE_NAME = "isolated_saved_rides.saved_rides"
-
+class ClosingSQLiteConnection(sqlite3.Connection):
+    def __exit__(self, exc_type, exc_value, traceback):
+        try:
+            return super().__exit__(exc_type, exc_value, traceback)
+        finally:
+            self.close()
 
 class SavedRideSchemaTests(unittest.TestCase):
     @classmethod
@@ -53,6 +58,18 @@ class SavedRideSchemaTests(unittest.TestCase):
     def setUp(self):
         self.database_path = Path(self._temporary.name) / f"{self._testMethodName}.db"
         self.saved_rides.DB_PATH = self.database_path
+        def test_connect_db():
+            connection = sqlite3.connect(
+                self.database_path,
+                timeout=10,
+                factory=ClosingSQLiteConnection,
+            )
+            connection.row_factory = sqlite3.Row
+            connection.execute("PRAGMA foreign_keys = ON")
+            return connection
+
+        self.saved_rides.connect_db = test_connect_db
+        self.saved_rides.database.is_postgres = lambda: False
         with closing(sqlite3.connect(self.database_path)) as db:
             db.execute("""
                 CREATE TABLE users (
