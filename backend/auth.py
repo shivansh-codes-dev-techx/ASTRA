@@ -376,11 +376,13 @@ def _send_verification_email(email: str, token: str):
 
     if not 200 <= result.status_code < 300:
         logger.error(
-            "Sendliberty rejected verification email request (HTTP %s)",
+            "Sendliberty rejected verification email request "
+            "(HTTP %s): %s | Request ID: %s",
             result.status_code,
+            result.text[:1000],
+            result.headers.get("X-Request-ID", "unavailable"),
         )
         raise ProviderUnavailable("Verification email could not be sent.")
-
     try:
         payload = result.json()
     except ValueError as exc:
