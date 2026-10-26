@@ -252,6 +252,22 @@ function LocationPicker({ id, label, value, onChange, placeholder }: {
 function App() {
   const [path] = useLocation();
 
+  useEffect(() => {
+    const isLoginPage = window.location.pathname.replace(/\/+$/, "") === "/login";
+    const selector = 'meta[name="robots"][data-astra-login-robots]';
+    const existing = document.head.querySelector(selector);
+
+    if (isLoginPage) {
+      const robots = existing ?? document.createElement("meta");
+      robots.setAttribute("name", "robots");
+      robots.setAttribute("content", "noindex, nofollow");
+      robots.setAttribute("data-astra-login-robots", "true");
+      if (!existing) document.head.appendChild(robots);
+    } else {
+      existing?.remove();
+    }
+  }, [path]);
+
   if (path.replace(/\/+$/, "") === "/login") {
     return <AuthPage />;
   }
